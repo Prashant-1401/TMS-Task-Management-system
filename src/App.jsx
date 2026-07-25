@@ -887,6 +887,71 @@ tbody tr:hover td{background:#FAFAFE;}tbody tr:last-child td{border-bottom:none;
 .kanban-card.is-dragging{opacity:.45;transform:scale(.97);box-shadow:none!important;}
 .kanban-card.is-lifted{transform:rotate(2deg) scale(1.04);box-shadow:0 16px 40px rgba(39,34,98,.22)!important;cursor:grabbing!important;z-index:10;}
 .confirm-banner{background:linear-gradient(90deg,#FEF9E7,#FFFDE0);border:1.5px solid #E69903;border-radius:10px;padding:12px 16px;animation:pulse 2s ease-in-out infinite;}
+
+/* ─── MOBILE HAMBURGER MENU ─── */
+.mbl-menu-btn{display:none;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px 8px;z-index:400;}
+.mbl-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:399;}
+@media(max-width:768px){
+  .mbl-menu-btn{display:flex;align-items:center;justify-content:center;}
+  .mbl-overlay.show{display:block;}
+  .app-sidebar{position:fixed!important;left:-260px;top:0;height:100vh;width:240px!important;z-index:401;transition:left .3s ease!important;}
+  .app-sidebar.open{left:0!important;}
+  .app-main{margin-left:0!important;}
+  .app-content{padding:16px 12px!important;}
+  .page-header-flex{flex-direction:column!important;gap:10px!important;}
+  .page-header-actions{width:100%!important;justify-content:flex-start!important;flex-wrap:wrap;}
+  .fab{bottom:20px;right:20px;width:48px;height:48px;font-size:22px;}
+}
+
+/* ─── RESPONSIVE GRIDS ─── */
+.grid-kpi-5{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
+.grid-kpi-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.grid-2col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.grid-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
+.grid-team-buckets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.filter-bar{display:flex;gap:12px;flex-wrap:nowrap;overflow-x:auto;align-items:center;}
+@media(max-width:768px){
+  .grid-kpi-5{grid-template-columns:repeat(2,1fr)!important;gap:10px!important;}
+  .grid-kpi-4{grid-template-columns:repeat(2,1fr)!important;gap:10px!important;}
+  .grid-2col{grid-template-columns:1fr!important;gap:14px!important;}
+  .grid-3col{grid-template-columns:1fr!important;gap:14px!important;}
+  .grid-team-buckets{grid-template-columns:repeat(4,1fr)!important;gap:4px!important;}
+  .filter-bar{flex-wrap:wrap!important;overflow-x:visible!important;}
+  .filter-bar select{width:100%!important;min-width:0!important;}
+  .filter-bar input[type=text]{min-width:0!important;}
+}
+@media(min-width:769px) and (max-width:1024px){
+  .grid-kpi-5{grid-template-columns:repeat(3,1fr)!important;}
+  .grid-kpi-4{grid-template-columns:repeat(2,1fr)!important;}
+}
+
+/* ─── RESPONSIVE MODALS & PANELS ─── */
+@media(max-width:768px){
+  .modal{width:calc(100vw - 24px)!important;max-width:none!important;margin:12px!important;max-height:calc(100vh - 24px)!important;border-radius:14px!important;}
+  .side-panel{width:100vw!important;border-radius:0!important;}
+  .overlay{padding:0!important;align-items:flex-end!important;}
+}
+
+/* ─── RESPONSIVE TABLES ─── */
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+@media(max-width:768px){
+  .table-scroll table{min-width:600px;}
+  td.action-text{min-width:180px!important;max-width:240px!important;font-size:12px!important;}
+  th{font-size:10px!important;padding:8px 10px!important;}
+  td{padding:8px 10px!important;font-size:12px!important;}
+}
+
+/* ─── LOGIN RESPONSIVE ─── */
+@media(max-width:768px){
+  .login-card{width:calc(100vw - 32px)!important;padding:24px 20px!important;}
+}
+
+/* ─── DASHBOARD STATUS BAR RESPONSIVE ─── */
+.status-bar{display:flex;gap:0;align-items:center;}
+@media(max-width:768px){
+  .status-bar{flex-wrap:wrap;}
+  .status-bar>div{min-width:45%;flex:1 1 45%;padding:10px 14px!important;}
+}
 `;
 /* ===================== MICRO COMPONENTS ===================== */
 function SBadge({ s }) { const c = SC[s] || { bg: "#eee", text: "#333", dot: "#aaa" }; return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: c.bg, color: c.text, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />{s}</span>; }
@@ -957,9 +1022,9 @@ function KPICard({ icon, value, label, sub, color, onClick, alert: al }) {
   </div>;
 }
 function PageHeader({ title, sub, children }) {
-  return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+  return <div className="page-header-flex" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
     <div><h1 style={{ fontFamily: "'Sora',sans-serif", fontSize: 22, fontWeight: 800, color: T.navy, lineHeight: 1.2 }}>{title}</h1>{sub && <p style={{ fontSize: 13, color: T.text2, marginTop: 4 }}>{sub}</p>}</div>
-    {children && <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{children}</div>}
+    {children && <div className="page-header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>{children}</div>}
   </div>;
 }
 function Sparkbar({ pct, color }) {
@@ -1028,7 +1093,7 @@ function LoginPage({ onLogin }) {
   };
   return (
     <div style={{ minHeight: "100vh", background: `linear-gradient(135deg,${T.navy} 0%,#3D378C 100%)`, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: 420, background: "#fff", borderRadius: 20, padding: 36, boxShadow: "0 24px 80px rgba(0,0,0,.25)" }}>
+      <div className="login-card" style={{ width: 420, background: "#fff", borderRadius: 20, padding: 36, boxShadow: "0 24px 80px rgba(0,0,0,.25)" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -1500,6 +1565,7 @@ function SessionsManagerModal({ user, onClose }) {
 function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCount, auditCount, activeMtg, onResumeActiveMtg, mtgRunning, mtgElapsed, notifications, onMarkAllRead, unreadCount, users, actions, onShowSupport, onShowProfile, onShowAdminNotifs, onShowSessions, onlineCount, lastSync, syncing }) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [autoStatus, setAutoStatus] = useState(_autosaveState);
   useEffect(() => subscribeAutosave(setAutoStatus), []);
   const isAdmin = isUserAdmin(user);
@@ -1510,9 +1576,12 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
   };
   const hms = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  const navigatePage = (id) => { if (canAccessPage(id)) { setPage(id); setMobileMenuOpen(false); } };
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg }}>
-      <aside style={{ width: 228, background: T.navy, color: "#fff", display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
+      {mobileMenuOpen && <div className="mbl-overlay show" onClick={() => setMobileMenuOpen(false)} />}
+      <aside className={`app-sidebar${mobileMenuOpen ? " open" : ""}`} style={{ width: 228, background: T.navy, color: "#fff", display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
         <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: T.amber, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>MCS</div>
@@ -1527,7 +1596,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
             const active = page === n.id;
             const allowed = canAccessPage(n.id);
             return (
-              <button key={n.id} onClick={() => { if (allowed) setPage(n.id); }} title={!allowed ? "Access not granted" : ""} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10, border: "none", cursor: allowed ? "pointer" : "not-allowed", marginBottom: 3, textAlign: "left", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "rgba(255,255,255,.15)" : "transparent", color: active ? "#fff" : allowed ? "rgba(255,255,255,.65)" : "rgba(255,255,255,.3)", transition: "all .2s", position: "relative" }}>
+              <button key={n.id} onClick={() => navigatePage(n.id)} title={!allowed ? "Access not granted" : ""} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10, border: "none", cursor: allowed ? "pointer" : "not-allowed", marginBottom: 3, textAlign: "left", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "rgba(255,255,255,.15)" : "transparent", color: active ? "#fff" : allowed ? "rgba(255,255,255,.65)" : "rgba(255,255,255,.3)", transition: "all .2s", position: "relative" }}>
                 <span style={{ fontSize: 16, width: 22, textAlign: "center", flexShrink: 0, opacity: allowed ? 1 : 0.4 }}>{n.icon}</span>
                 <span style={{ flex: 1 }}>{n.label}</span>
                 {!allowed && <span style={{ fontSize: 10, opacity: 0.5 }}>🔒</span>}
@@ -1570,7 +1639,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
             )}
           </div>
           {canAccessMasterSetup(user) && (
-            <button onClick={() => setPage(99)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 18px", border: "none", cursor: "pointer", background: page === 99 ? "rgba(255,255,255,.1)" : "transparent", color: "rgba(255,255,255,.45)", fontSize: 12, fontFamily: "'Inter',sans-serif", transition: "all .2s" }}>
+            <button onClick={() => navigatePage(99)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 18px", border: "none", cursor: "pointer", background: page === 99 ? "rgba(255,255,255,.1)" : "transparent", color: "rgba(255,255,255,.45)", fontSize: 12, fontFamily: "'Inter',sans-serif", transition: "all .2s" }}>
               <span style={{ fontSize: 14 }}>⚙</span><span>Master Setup</span>
             </button>
           )}
@@ -1611,7 +1680,17 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
           </div>
         </div>
       </aside>
-      <main style={{ flex: 1, overflow: "hidden", minWidth: 0, position: "relative", display: "flex", flexDirection: "column", height: "100vh" }}>
+      <main style={{ flex: 1, overflow: "hidden", minWidth: 0, position: "relative", display: "flex", flexDirection: "column", height: "100vh" }} className="app-main">
+
+        {/* Mobile top bar */}
+        <div style={{ display: "none", padding: "10px 16px", background: T.navy, color: "#fff", alignItems: "center", gap: 12 }} className="mbl-topbar">
+          <button className="mbl-menu-btn" onClick={() => setMobileMenuOpen(p => !p)} style={{ display: "flex" }}>☰</button>
+          <div style={{ flex: 1, fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 14, color: "#fff" }}>MCS Actions</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {userPerms.canEditActions && <button className="fab" style={{ position: "static", width: 36, height: 36, fontSize: 20 }} onClick={onQuickAdd} title="Quick add action">+</button>}
+          </div>
+        </div>
+        <style>{`.mbl-topbar{display:none!important;}@media(max-width:768px){.mbl-topbar{display:flex!important;}.fab:not(.mbl-topbar .fab){display:none!important;}}`}</style>
 
         {/* Floating "Meeting Running" pill when away from Work page */}
         {activeMtg && page !== 1 && (
@@ -1623,7 +1702,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
           </div>
         )}
 
-        <div style={{ padding: 28, paddingTop: 20, flex: 1, overflowY: "auto", minHeight: 0 }}>{children}</div>
+        <div className="app-content" style={{ padding: 28, paddingTop: 20, flex: 1, overflowY: "auto", minHeight: 0 }}>{children}</div>
       </main>
       {userPerms.canEditActions && <button className="fab" onClick={onQuickAdd} title="Quick add action">+</button>}
     </div>
@@ -1687,7 +1766,7 @@ function ActionSidePanel({ action, onClose, onUpdate, users, plants, depts, curr
           <InlineField label="Priority" k="priority" value={action.priority} opts={["NORMAL", "WARNING", "CRITICAL"]} />
           <InlineField label="Remarks" k="remarks" value={action.remarks} />
           <div style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: .4, marginBottom: 6 }}>Details</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          <div className="grid-2col" style={{ gap: 8, marginBottom: 14 }}>
             {[["Plant", action.plant], ["Department", action.section], ["Allocated By", action.allocatedBy], ["Date of Action", fmt(action.dateOfAction)]].map(([l, v]) => (
               <div key={l} style={{ background: T.bg, borderRadius: 6, padding: "8px 10px" }}>
                 <div style={{ fontSize: 9, fontWeight: 700, color: T.text2, textTransform: "uppercase", marginBottom: 2 }}>{l}</div>
@@ -1900,7 +1979,7 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
       </div>
 
       {/* KPI tiles */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14, marginBottom: 24 }}>
+      <div className="grid-kpi-5" style={{ marginBottom: 24 }}>
         {[
           { n: total, label: "Task Assigned", icon: "📋", color: T.navy, key: "total" },
           { n: unassigned.length, label: "Unassigned", icon: "❓", color: T.slate, key: "unassigned" },
@@ -1988,7 +2067,7 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
       </div>
 
       {/* Row 3: Team Pending (Fix 6) + Escalated Actions (Fix 7) */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div className="grid-2col" style={{ marginBottom: 20 }}>
         {/* Fix 6: Team Pending with 4 color buckets per person */}
         <div className="card" style={{ padding: 20 }}>
           <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 14, color: T.navy, marginBottom: 4 }}>Team Pending Actions</div>
@@ -2003,7 +2082,7 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
                     <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{u.name}</span>
                     <span style={{ fontSize: 10, color: T.text2 }}>{u.role}</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
+                  <div className="grid-team-buckets">
                     {[
                       { label: "Delayed", count: u.delayed.length, bg: T.redL, border: T.red, color: T.red, actions: u.delayed, tip: "Overdue" },
                       { label: "Today", count: u.today.length, bg: "#FFF3E0", border: "#E65100", color: "#E65100", actions: u.today, tip: "Due today" },
@@ -2209,7 +2288,7 @@ function ProjectCharterModal({ pr, onClose, actions, meetings, user, onProjectUp
           </div>
         </div>
         <div style={{ padding: "24px 28px", overflowY: "auto", maxHeight: "calc(93vh - 180px)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
+          <div className="grid-3col" style={{ gap: 14, marginBottom: 20 }}>
             {[{ l: "Sponsor", k: "sponsor" }, { l: "Project Owner", k: "owner" }, { l: "Budget", k: "budget" }].map(({ l, k }) => (
               <div key={k} className="card" style={{ padding: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: .5, marginBottom: 6 }}>{l}</div>
@@ -2377,7 +2456,7 @@ function WorkPage({ plants, depts, users, onCommitFinal, actions, setActions, us
   return (
     <div className="fade-in">
       <PageHeader title="Work" sub="Projects, meetings and active sessions" />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="grid-2col" style={{ gap: 24 }}>
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 15, color: T.navy, display: "flex", alignItems: "center", gap: 8 }}>
@@ -3158,7 +3237,7 @@ function AddMeetingModal({ plants, users, projects, onSave, onClose, currentUser
           </div>
           <div style={{ background: T.bg, borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: T.navy, marginBottom: 8 }}>Meeting Frequency</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+            <div className="grid-3col" style={{ gap: 6 }}>
               {FREQ_OPTS.map(o => {
                 const active = freqMode === o.v;
                 return (
@@ -3589,7 +3668,7 @@ function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBa
           {/* Session summary */}
           <div className="card" style={{ padding: 20, marginBottom: 24, textAlign: "left" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: .5, marginBottom: 12 }}>Session Summary</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+            <div className="grid-3col" style={{ gap: 14 }}>
               {[
                 { icon: "⏱", label: "Duration", value: hms(elapsed || 0), color: T.navy },
                 { icon: "📝", label: "Words Captured", value: wordCount, color: T.amber },
@@ -3741,7 +3820,7 @@ function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBa
         </div>
 
         {/* Filter ribbon — matches Actions Register style */}
-        <div style={{ padding: "10px 16px", background: "#fff", borderBottom: `1px solid ${T.border}`, display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", alignItems: "flex-end" }}>
+        <div className="filter-bar" style={{ padding: "10px 16px", background: "#fff", borderBottom: `1px solid ${T.border}`, alignItems: "flex-end" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
               value={mtgPendingSearch || ""}
@@ -4789,7 +4868,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
       </PageHeader>
 
       <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", alignItems: "flex-end", marginBottom: 10 }}>
+        <div className="filter-bar" style={{ alignItems: "flex-end", marginBottom: 10 }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search actions…" style={{ width: 200 }} />
           {[
             { label: "Plant", key: "plant", opts: scopedPlants(user, plants).map(p => p.name).filter(n => n !== "All") },
@@ -5295,7 +5374,7 @@ function DashboardPage({ actions, plants, depts, users, audit, user, meetings, o
   return (
     <div className="fade-in">
       <PageHeader title="Dashboard" sub="Live accountability snapshot">
-        <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", alignItems: "flex-end" }}>
+        <div className="filter-bar" style={{ gap: 10, alignItems: "flex-end" }}>
           {refreshData && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: .4 }}>&nbsp;</span>
@@ -5317,13 +5396,13 @@ function DashboardPage({ actions, plants, depts, users, audit, user, meetings, o
         </div>
       </PageHeader>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 12 }}>
+      <div className="grid-kpi-4" style={{ marginBottom: 12 }}>
         <KPICard icon="✅" value={total} label="Total Actions" sub="All records" color={T.navy} onClick={() => setDrill("aging")} />
         <KPICard icon="⚠" value={over} label="Overdue" sub="Need attention" color={T.red} alert={over > 0} onClick={() => setDrill("overdue")} />
         <KPICard icon="🔴" value={crit} label="Critical Open" sub="Unresolved" color={T.red} alert={crit > 0} onClick={() => setDrill("critical")} />
         <KPICard icon="🎯" value={`${onT}%`} label="On-Time Rate" sub="Completed on schedule" color={onT >= 80 ? T.green : T.amber} onClick={() => setDrill("ontime")} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
+      <div className="grid-kpi-4" style={{ marginBottom: 20 }}>
         <KPICard icon="📅" value={revs} label="Date Revisions" sub="Scope creep tracker" color={revs > 5 ? T.amber : T.slate} onClick={() => setDrill("revisions")} />
         <KPICard icon="🚨" value={dedupedAuditBadge.length} label="Escalated Actions" sub="View all →" color={T.red} alert={dedupedAuditBadge.length > 0} onClick={() => setDrill("escalated")} />
         <KPICard icon="⏳" value={pendingConf} label="Pending Confirm" sub="Awaiting approval" color={T.amber} alert={pendingConf > 0} onClick={() => setDrill("pending")} />
@@ -5337,7 +5416,7 @@ function DashboardPage({ actions, plants, depts, users, audit, user, meetings, o
         </div>
       </div>
 
-      <div className="card" style={{ padding: "14px 24px", marginBottom: 20, display: "flex", gap: 0, alignItems: "center" }}>
+      <div className="card status-bar" style={{ padding: "14px 24px", marginBottom: 20, gap: 0, alignItems: "center" }}>
         {[{ s: "NOT STARTED", n: ns }, { s: "IN PROCESS", n: ip }, { s: "COMPLETED", n: comp }, { s: "DROPPED", n: drop }].map((k, i, arr) => (
           <div key={k.s} onClick={() => setDrill(k.s.toLowerCase().replace(/ /g, "_"))} style={{ flex: 1, padding: "0 18px", borderRight: i < arr.length - 1 ? `1.5px solid ${T.border}` : "none", cursor: "pointer" }}>
             <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 22, fontWeight: 700, color: SC[k.s]?.dot || T.slate }}>{k.n}</div>
@@ -5396,7 +5475,7 @@ function DashboardPage({ actions, plants, depts, users, audit, user, meetings, o
         </table>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div className="grid-2col">
         {/* Feature 8: Clickable Critical & Overdue with slide-in panel */}
         <div className="card card-hover" style={{ padding: 20, cursor: "pointer" }} onClick={() => setDrill("criticalOverdue")}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -5796,7 +5875,7 @@ function EscMatrixTab({ escMatrix, setEscMatrix, onSave, isAdmin, canModify, use
                 </div>
               )}
               {isEditing && editDraft && (
-                <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                <div className="grid-3col" style={{ padding: "16px 18px", gap: 12 }}>
                   <div style={{ gridColumn: "1/-1" }}><Lbl t="Tier Label (auto-built if left blank)" /><input value={editDraft.label || ""} onChange={e => upDraft("label", e.target.value)} placeholder={`Level ${editDraft.level} — ${editDraft.fromUser || "From"} → ${editDraft.targetUser || "To"}`} /></div>
                   <div style={{ gridColumn: "1/-1" }}><Lbl t="Description" /><input value={editDraft.description || ""} onChange={e => upDraft("description", e.target.value)} placeholder="Brief explanation of this escalation level" /></div>
                   <div>
@@ -5942,7 +6021,7 @@ function TeamPage({ users, actions, escMatrix, plants, depts, user, isAdmin, set
         <KPICard icon="⚠️" value={membersWithEsc} label="Members With Escalations" sub="Team mates who need attention" color={T.amber} />
       </div>
 
-      <div className="card" style={{ padding: 12, marginBottom: 16, display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", alignItems: "center" }}>
+      <div className="card filter-bar" style={{ padding: 12, marginBottom: 16, alignItems: "center" }}>
         <input type="text" placeholder="Search by name, role, dept…" value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, minWidth: 200, padding: "8px 12px" }} />
         <select value={plantFilter} onChange={e => setPlantFilter(e.target.value)} style={{ width: 170 }}>
           <option value="">All Plants</option>
@@ -6070,7 +6149,7 @@ function EscalationsPage({ actions, setActions, audit, users, escMatrix, plants,
         <KPICard icon="📋" value={scopedAudit.length} label="Total Escalation Triggers" sub="Logged history of escalation events" color={T.slate} />
       </div>
 
-      <div className="card" style={{ padding: 16, marginBottom: 20, display: "flex", gap: 12, flexWrap: "nowrap", overflowX: "auto", alignItems: "center", background: "#fff" }}>
+      <div className="card filter-bar" style={{ padding: 16, marginBottom: 20, background: "#fff" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <input type="text" placeholder="Search by SN, text, owner, reason..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: "100%", padding: "8px 12px" }} />
         </div>
