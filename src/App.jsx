@@ -4900,7 +4900,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
                   <span style={{ fontSize: 9, color: T.text2 }}>{isOpen ? "▲" : "▼"}</span>
                 </button>
                 {isOpen && (
-                  <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 600, marginTop: 4, background: "#fff", border: `1px solid ${T.border}`, borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,.13)", minWidth: 190, maxHeight: 260, overflowY: "auto", padding: 6 }}>
+                  <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: "100%", left: 0, zIndex: 600, marginTop: 4, background: "#fff", border: `1px solid ${T.border}`, borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,.13)", minWidth: 190, maxHeight: 260, overflowY: "auto", padding: 6 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: sel2.length === 0 ? 700 : 400, color: sel2.length === 0 ? T.navy : T.text, marginBottom: 2, borderBottom: `1px solid ${T.border}` }} onClick={() => clearFilter(key)}>
                       <span style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${T.border}`, background: "transparent", display: "inline-block" }} />
                       All (clear)
