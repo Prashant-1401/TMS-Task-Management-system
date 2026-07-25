@@ -863,7 +863,7 @@ tbody tr:hover td{background:#FAFAFE;}tbody tr:last-child td{border-bottom:none;
 .fade-in{animation:fadeIn .3s ease;}
 .overlay{position:fixed;inset:0;background:rgba(26,21,50,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;}
 .modal{background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto;animation:slideUp .3s ease;}
-.side-panel{position:fixed;top:0;right:0;height:100vh;background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.12);z-index:350;overflow-y:auto;animation:slideInR .25s ease;}
+.side-panel{position:fixed;top:0;right:0;height:100vh;background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.12);z-index:350;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:slideInR .25s ease;}
 .fab{position:fixed;bottom:28px;right:28px;width:52px;height:52px;border-radius:50%;background:#272262;color:#fff;border:none;font-size:26px;cursor:pointer;box-shadow:0 6px 24px rgba(39,34,98,.35);display:flex;align-items:center;justify-content:center;z-index:200;transition:all .2s;}
 .fab:hover{background:#1A1653;transform:scale(1.08);}
 .drag-over{background:#EAE7F8!important;border:2px dashed #272262!important;}
@@ -928,7 +928,8 @@ tbody tr:hover td{background:#FAFAFE;}tbody tr:last-child td{border-bottom:none;
 /* ─── RESPONSIVE MODALS & PANELS ─── */
 @media(max-width:768px){
   .modal{width:calc(100vw - 24px)!important;max-width:none!important;margin:12px!important;max-height:calc(100vh - 24px)!important;border-radius:14px!important;}
-  .side-panel{width:100vw!important;border-radius:0!important;}
+  .side-panel{width:100vw!important;border-radius:0!important;-webkit-overflow-scrolling:touch!important;}
+  .side-panel>div:last-child{max-height:none!important;}
   .overlay{padding:0!important;align-items:flex-end!important;}
 }
 
@@ -1756,7 +1757,7 @@ function ActionSidePanel({ action, onClose, onUpdate, users, plants, depts, curr
             {isOverdue(action) && <span style={{ background: T.red, color: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>{daysOver(action)}d overdue</span>}
           </div>
         </div>
-        <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1, maxHeight: "calc(100vh - 200px)" }}>
+        <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: .4, marginBottom: 3 }}>Responsible</div>
             <MultiUserSelect value={action.responsible} users={(users || []).filter(u => { if (action.plant && action.plant !== "All") return !u.plant || u.plant === "All" || u.plant === action.plant; if (!isUserAdmin(user) && user?.plant && user.plant !== "All") return !u.plant || u.plant === "All" || u.plant === user.plant; return true; })} onChange={v => { const patch = { responsible: v }; const firstName = (v || "").split(",").map(s => s.trim()).filter(Boolean)[0]; if (firstName) { const u = (users || []).find(x => x.name === firstName); if (u) { if (u.plant) patch.plant = u.plant; if (u.dept) patch.section = u.dept; } } onUpdate && onUpdate(action.id, patch); }} />
