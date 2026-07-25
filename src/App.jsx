@@ -2006,8 +2006,17 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
           <table>
             <thead><tr><th>SN</th><th>Action</th><th>Status</th><th>Due On</th><th>Priority</th><th>Revisions</th></tr></thead>
             <tbody>
-              {myOwn.slice(0, 8).map((a, idx) => (
-                <tr key={a.id || `home-own-${idx}`} style={{ cursor: "pointer" }} onClick={() => setActionPanel(a)}>
+              {myOwn.slice(0, 8).map((a, idx) => {
+                const status = normalizeStatus(a.status);
+                const hasRemarks = Array.isArray(a.messages) && a.messages.length > 0;
+                let rowBg = "";
+                if (status === "COMPLETED") rowBg = "#D5F5E3";
+                else if (status === "DROPPED") rowBg = "#F2F3F4";
+                else if (isOverdue(a)) rowBg = "#FADBD8";
+                else if (hasRemarks) rowBg = "#FEF3CD";
+                else if (a.pendingConfirmation) rowBg = "#FEF9E7";
+                return (
+                <tr key={a.id || `home-own-${idx}`} style={{ cursor: "pointer", background: rowBg }} onClick={() => setActionPanel(a)}>
                   <td style={{ fontFamily: "monospace", fontSize: 11, color: T.text2, whiteSpace: "nowrap" }}>{a.sn}</td>
                   <td style={{ fontSize: 12, fontWeight: 500, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 320, lineHeight: 1.4 }}>{a.text}</td>
                   <td><SBadge s={a.status} /></td>
@@ -2015,7 +2024,8 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
                   <td><PBadge p={a.priority} /></td>
                   <td style={{ textAlign: "center" }}>{(a.revisions || 0) > 0 ? <span style={{ fontWeight: 700, color: T.amber, fontSize: 12 }}>{a.revisions}</span> : <span style={{ color: T.text2, fontSize: 12 }}>—</span>}</td>
                 </tr>
-              ))}
+                );
+              })}
               {myOwn.length === 0 && <tr><td colSpan={6}><Empty icon="🎉" title="All clear!" sub="No open actions assigned to you." /></td></tr>}
             </tbody>
           </table>
@@ -5049,8 +5059,17 @@ function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortC
             <TH k="revisions" label="Revisions" minWidth={80} style={{ textAlign: "center" }} />
           </tr></thead>
           <tbody>
-            {sorted.map((a, idx) => (
-              <tr key={a.id || `act-${idx}`} style={{ cursor: "pointer", background: a.pendingConfirmation ? "#FEF9E7" : "" }} onClick={() => setSel(a)}>
+            {sorted.map((a, idx) => {
+              const status = normalizeStatus(a.status);
+              const hasRemarks = Array.isArray(a.messages) && a.messages.length > 0;
+              let rowBg = "";
+              if (status === "COMPLETED") rowBg = "#D5F5E3";
+              else if (status === "DROPPED") rowBg = "#F2F3F4";
+              else if (isOverdue(a)) rowBg = "#FADBD8";
+              else if (hasRemarks) rowBg = "#FEF3CD";
+              else if (a.pendingConfirmation) rowBg = "#FEF9E7";
+              return (
+              <tr key={a.id || `act-${idx}`} style={{ cursor: "pointer", background: rowBg }} onClick={() => setSel(a)}>
                 <td style={{ fontFamily: "monospace", fontSize: 11, color: T.text2 }}>{a.sn}</td>
                 <td style={{ fontSize: 12, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.src}</td>
 
@@ -5067,7 +5086,8 @@ function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortC
                 <td onClick={e => e.stopPropagation()}><SBadge s={a.status} /></td>
                 <td style={{ textAlign: "center" }}>{(a.revisions || 0) > 0 ? <span style={{ fontWeight: 700, color: T.amber, fontSize: 12 }}>{a.revisions}</span> : <span style={{ color: T.text2, fontSize: 12 }}>—</span>}</td>
               </tr>
-            ))}
+              );
+            })}
             {sorted.length === 0 && <tr><td colSpan={10}><Empty icon="📭" title="No actions found" sub="Adjust filters or add actions via Work." /></td></tr>}
           </tbody>
         </table>
