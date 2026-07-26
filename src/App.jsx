@@ -4763,9 +4763,13 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   const scopedNames = user ? getSubTree(user.name, users) : [];
   const userNameLower = (user?.name || "").trim().toLowerCase();
   const userPlant = user?.plant;
-  const scoped = isAdmin || !userPlant || userPlant === "All"
+  let scoped = isAdmin
     ? actions
-    : actions.filter(a => !a.plant || a.plant === "All" || a.plant === userPlant);
+    : actions.filter(a => !userPlant || userPlant === "All" || !a.plant || a.plant === "All" || a.plant === userPlant);
+  // Non-admin users: also scope by responsible person (self + subordinates)
+  if (!isAdmin && scopedNames.length > 0) {
+    scoped = scoped.filter(a => responsibleMatchesUsers(a.responsible, scopedNames.map(n => n.toLowerCase())));
+  }
 
   const toggleFilter = (key, val) => {
     setFiltersPersist(f => {
