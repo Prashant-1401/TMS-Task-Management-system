@@ -4743,6 +4743,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [openFilter, setOpenFilter] = useState(null);
+  const [dropPos, setDropPos] = useState(null);
   const [emailModal, setEmailModal] = useState(null);
   const [emailForm, setEmailForm] = useState({ responsible: "", email: "", status: "" });
   const [emailSending, setEmailSending] = useState(false);
@@ -4774,7 +4775,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
     });
   };
   const clearFilter = (key) => setFiltersPersist(f => ({ ...f, [key]: [] }));
-  const clearAll = () => { const empty = { plant: [], section: [], responsible: [], status: [], priority: [], project: [], meeting: [] }; setFilters(empty); userFilterPref[userKey] = empty; saveFilterPref(); };
+  const clearAll = () => { const empty = { plant: [], section: [], responsible: [], status: [], priority: [], project: [], meeting: [] }; setFilters(empty); userFilterPref[userKey] = empty; saveFilterPref(); setOpenFilter(null); setDropPos(null); };
   // Save filters to persistent store on each change
   const setFiltersPersist = (updater) => {
     setFilters(prev => { const next = typeof updater === "function" ? updater(prev) : updater; userFilterPref[userKey] = next; saveFilterPref(); return next; });
@@ -4895,13 +4896,13 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
             return (
               <div key={key} style={{ position: "relative" }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: T.text2, letterSpacing: .4, textTransform: "uppercase", display: "block", marginBottom: 2 }}>{label}</span>
-                <button onClick={() => setOpenFilter(isOpen ? null : key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", border: `1.5px solid ${sel2.length ? T.navy : T.border}`, borderRadius: 7, background: sel2.length ? "#EEF0FF" : "#fff", color: sel2.length ? T.navy : T.text, cursor: "pointer", fontSize: 12, fontWeight: 500, minWidth: 110, whiteSpace: "nowrap" }}>
+                <button onClick={e => { if (isOpen) { setOpenFilter(null); setDropPos(null); } else { const r = e.currentTarget.getBoundingClientRect(); setDropPos({ top: r.bottom + 4, left: r.left, width: r.width }); setOpenFilter(key); } }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", border: `1.5px solid ${sel2.length ? T.navy : T.border}`, borderRadius: 7, background: sel2.length ? "#EEF0FF" : "#fff", color: sel2.length ? T.navy : T.text, cursor: "pointer", fontSize: 12, fontWeight: 500, minWidth: 110, whiteSpace: "nowrap" }}>
                   <span style={{ flex: 1, textAlign: "left" }}>{sel2.length === 0 ? "All" : sel2.length === 1 ? sel2[0] : `${sel2.length} selected`}</span>
-                  {sel2.length > 0 && <span onClick={e => { e.stopPropagation(); clearFilter(key); }} style={{ color: T.text2, fontWeight: 700, fontSize: 14, lineHeight: 1 }}>×</span>}
+                  {sel2.length > 0 && <span onClick={e => { e.stopPropagation(); clearFilter(key); setDropPos(null); }} style={{ color: T.text2, fontWeight: 700, fontSize: 14, lineHeight: 1 }}>×</span>}
                   <span style={{ fontSize: 9, color: T.text2 }}>{isOpen ? "▲" : "▼"}</span>
                 </button>
-                {isOpen && (
-                  <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: "100%", left: 0, zIndex: 600, marginTop: 4, background: "#fff", border: `1px solid ${T.border}`, borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,.13)", minWidth: 190, maxHeight: 260, overflowY: "auto", padding: 6 }}>
+                {isOpen && dropPos && (
+                  <div onClick={e => e.stopPropagation()} style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 600, background: "#fff", border: `1px solid ${T.border}`, borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,.13)", minWidth: 190, maxHeight: 260, overflowY: "auto", padding: 6 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: sel2.length === 0 ? 700 : 400, color: sel2.length === 0 ? T.navy : T.text, marginBottom: 2, borderBottom: `1px solid ${T.border}` }} onClick={() => clearFilter(key)}>
                       <span style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${T.border}`, background: "transparent", display: "inline-block" }} />
                       All (clear)
@@ -4941,7 +4942,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
           ))}
         </div>
       </div>
-      {openFilter && <div style={{ position: "fixed", inset: 0, zIndex: 599 }} onClick={() => setOpenFilter(null)} />}
+      {openFilter && <div style={{ position: "fixed", inset: 0, zIndex: 599 }} onClick={() => { setOpenFilter(null); setDropPos(null); }} />}
       {view === "table" && <TableView fa={fa} upStatus={upStatus} setSel={a => { setSel(a); }} canEdit={canEdit} upAction={upAction} sortState={userSortPref[userKey]} onSortChange={s => { userSortPref[userKey] = s; }} users={users} meetings={meetings} />}
       {view === "board" && <BoardView fa={fa} setSel={setSel} users={users} />}
       {view === "kanban" && <KanbanView
