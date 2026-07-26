@@ -4747,7 +4747,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   const [emailForm, setEmailForm] = useState({ responsible: "", email: "", status: "" });
   const [emailSending, setEmailSending] = useState(false);
   const canEdit = isUserAdmin(user) || getPerms(user).canEditActions;
-  const allProjects = [...new Set(actions.map(a => a.projectName || a.project).filter(Boolean))];
+  const allProjects = [...new Set([...(projects || []).map(p => p.name), ...actions.map(a => a.projectName || a.project)].filter(Boolean))];
 
   const changeView = v => { setView(v); userViewPref[userKey] = v; };
 
