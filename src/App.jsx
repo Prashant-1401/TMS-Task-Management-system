@@ -4846,7 +4846,11 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
         return f;
       });
     }
-    upAction(id, { status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false });
+    if (status === "PENDING CONFIRM") {
+      upAction(id, { status: "IN PROCESS", closedOn: null, pendingConfirmation: true });
+    } else {
+      upAction(id, { status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false });
+    }
   };
   const allSections = scopedDepts(user, depts).map(d => d.name).filter(Boolean);
   const allResponsible = scopedUsers(user, users).map(u => u.name).filter(Boolean);
@@ -5230,7 +5234,8 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
     });
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, 28);
-    requestAnimationFrame(() => { ghost.remove(); setDraggingId(a.id); });
+    setTimeout(() => ghost.remove(), 0);
+    setDraggingId(a.id);
   };
 
   const handleMouseDown = (a) => {
