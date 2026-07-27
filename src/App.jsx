@@ -1694,17 +1694,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
               </div>
             )}
           </div>
-           {/* Background autosave status + live sync indicator */}
-          <div style={{ padding: "8px 18px 14px", borderTop: "1px solid rgba(255,255,255,.1)", display: "flex", alignItems: "center", gap: 8 }}>
-            {autoStatus.status === "saving" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: T.amber, animation: "blink 1s infinite" }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.6)" }}>Saving…</span></>}
-            {autoStatus.status === "saved" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.6)" }}>All changes saved</span></>}
-            {autoStatus.status === "pending" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: T.amber }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.6)" }}>Pending {autoStatus.pending} save{autoStatus.pending !== 1 ? "s" : ""}</span></>}
 
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "rgba(255,255,255,.5)" }} title={lastSync ? "Last synced " + new Date(lastSync).toLocaleTimeString() : "Live sync"}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: syncing ? T.amber : T.green, animation: syncing ? "blink 1s infinite" : "none" }} />
-              {syncing ? "Syncing" : "Live"}
-            </span>
-          </div>
         </div>
       </aside>
       <main style={{ flex: 1, overflow: "hidden", minWidth: 0, position: "relative", display: "flex", flexDirection: "column", height: "100vh" }} className="app-main">
