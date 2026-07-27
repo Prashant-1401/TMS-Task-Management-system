@@ -5034,6 +5034,25 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
 function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortChange, users, meetings }) {
   const meetingMap = {}; (meetings || []).forEach(m => { meetingMap[m.id] = m; });
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fsView, setFsView] = useState("table");
+  const tableAreaRef = useRef(null);
+  const captureTable = async () => {
+    const el = tableAreaRef.current;
+    if (!el) return;
+    if (!window.html2canvas) {
+      await new Promise((res, rej) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#fff", useCORS: true });
+    const link = document.createElement("a");
+    link.download = `actions-capture-${new Date().toISOString().slice(0,10)}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
   useEffect(() => { if (!isFullscreen) return; const h = e => { if (e.key === "Escape") setIsFullscreen(false); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [isFullscreen]);
   // Use externally-provided sort state if available (for persistence), else local
   const [localSortKey, setLocalSortKey] = useState(sortState?.key || "dateOfAction");
@@ -5071,13 +5090,21 @@ function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortC
     <div className={isFullscreen ? "" : "card"} style={{ padding: 0, overflow: "hidden", ...(isFullscreen ? { position: "fixed", inset: 0, zIndex: 900, background: "#fff", borderRadius: 0, display: "flex", flexDirection: "column" } : {}) }}>
       {isFullscreen && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", borderBottom: `1.5px solid ${T.border}`, background: T.navy, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>Actions Register — Fullscreen ({fa.length} rows)</span>
-        <button onClick={() => setIsFullscreen(false)} style={{ background: "rgba(255,255,255,.15)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 7, color: "#fff", padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✕ Exit Fullscreen</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {[{ v: "table", icon: "☰", l: "Table" }, { v: "board", icon: "⊞", l: "Board" }, { v: "kanban", icon: "▦", l: "Kanban" }, { v: "timeline", icon: "━", l: "Timeline" }].map(x => (
+            <button key={x.v} onClick={() => setFsView(x.v)} style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${fsView === x.v ? "#fff" : "rgba(255,255,255,.3)"}`, background: fsView === x.v ? "#fff" : "transparent", color: fsView === x.v ? T.navy : "rgba(255,255,255,.7)", fontSize: 11, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+              {x.icon} {x.l}
+            </button>
+          ))}
+          <button onClick={() => setIsFullscreen(false)} style={{ background: "rgba(255,255,255,.15)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 7, color: "#fff", padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", marginLeft: 8 }}>✕ Exit</button>
+          <button onClick={captureTable} style={{ background: "rgba(255,255,255,.15)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 7, color: "#fff", padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>📸 Capture</button>
+        </div>
       </div>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", borderTop: isFullscreen ? "none" : `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, background: T.bg, flexShrink: 0 }}>
         <span style={{ fontSize: 11, color: T.text2, fontWeight: 500 }}>{fa.length} action{fa.length !== 1 ? "s" : ""}</span>
         {!isFullscreen && <button onClick={() => setIsFullscreen(true)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", border: `1px solid ${T.border}`, borderRadius: 6, background: "#fff", color: T.text2, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>⛶ Fullscreen</button>}
       </div>
-      <div style={{ overflowX: "auto", flex: isFullscreen ? 1 : "none", WebkitOverflowScrolling: "touch" }}>
+      <div ref={tableAreaRef} style={{ overflowX: "auto", flex: isFullscreen ? 1 : "none", WebkitOverflowScrolling: "touch" }}>
         <table style={{ minWidth: 1200 }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 2, background: "#fff" }}><tr>
             <TH k="sn" label="SN" minWidth={70} />
