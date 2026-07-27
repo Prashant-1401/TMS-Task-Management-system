@@ -5205,10 +5205,11 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
   const holdTimerRef = useRef(null);
 
   const HOLD_GLOW = {
-    "IN PROCESS":  { border: "#E69903", shadow: "0 0 0 3px rgba(230,153,3,.25), 0 8px 24px rgba(230,153,3,.18)",    bg: "#FFFBEF" },
-    "NOT STARTED": { border: "#7C80B0", shadow: "0 0 0 3px rgba(124,128,176,.25), 0 8px 24px rgba(124,128,176,.18)", bg: "#F4F3FB" },
-    "COMPLETED":   { border: "#27AE60", shadow: "0 0 0 3px rgba(39,174,96,.25),   0 8px 24px rgba(39,174,96,.18)",   bg: "#F0FBF5" },
-    "DROPPED":     { border: "#BDC3C7", shadow: "0 0 0 3px rgba(189,195,199,.25), 0 8px 24px rgba(189,195,199,.18)", bg: "#F8F9FA" },
+    "NOT STARTED":      { border: "#7C80B0", shadow: "0 0 0 3px rgba(124,128,176,.25), 0 8px 24px rgba(124,128,176,.18)", bg: "#F4F3FB" },
+    "IN PROCESS":       { border: "#E69903", shadow: "0 0 0 3px rgba(230,153,3,.25), 0 8px 24px rgba(230,153,3,.18)",    bg: "#FFFBEF" },
+    "PENDING CONFIRM":  { border: "#F39C12", shadow: "0 0 0 3px rgba(243,156,18,.25), 0 8px 24px rgba(243,156,18,.18)",  bg: "#FEF9E7" },
+    "COMPLETED":        { border: "#27AE60", shadow: "0 0 0 3px rgba(39,174,96,.25),   0 8px 24px rgba(39,174,96,.18)",   bg: "#F0FBF5" },
+    "DROPPED":          { border: "#BDC3C7", shadow: "0 0 0 3px rgba(189,195,199,.25), 0 8px 24px rgba(189,195,199,.18)", bg: "#F8F9FA" },
   };
 
   const handleDragStart = (e, a) => {
@@ -5247,14 +5248,13 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
       width: "100%",
       paddingBottom: 100
     }}>
-      {["Escalated Action", ...STATUS_LIST].map(col => {
-        const isEscalatedCol = col === "Escalated Action";
-        const c = isEscalatedCol ? { bg: T.redL, text: T.red, dot: T.red } : (SC[col] || { bg: "#eee", text: "#333", dot: "#aaa" });
-        const glow = isEscalatedCol ? { border: T.red, shadow: "0 0 0 3px rgba(192,57,43,.25), 0 8px 24px rgba(192,57,43,.18)", bg: "#FADBD8" } : (HOLD_GLOW[col] || { border: T.navy, shadow: "0 0 0 3px rgba(39,34,98,.2), 0 8px 24px rgba(39,34,98,.15)", bg: "#F4F3FB" });
+      {["NOT STARTED", "IN PROCESS", "PENDING CONFIRM", "COMPLETED", "DROPPED"].map(col => {
+        const c = SC[col] || { bg: "#eee", text: "#333", dot: "#aaa" };
+        const glow = HOLD_GLOW[col] || { border: T.navy, shadow: "0 0 0 3px rgba(39,34,98,.2), 0 8px 24px rgba(39,34,98,.15)", bg: "#F4F3FB" };
         const isDragOver = overCol === col;
         let colCards = [];
-        if (isEscalatedCol) {
-          colCards = fa.filter(a => isOverdue(a) && a.status !== "COMPLETED" && a.status !== "DROPPED");
+        if (col === "PENDING CONFIRM") {
+          colCards = fa.filter(a => a.pendingConfirmation && a.status !== "COMPLETED" && a.status !== "DROPPED");
         } else {
           colCards = fa.filter(a => normalizeStatus(a.status) === col);
         }
@@ -5265,11 +5265,6 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol(null); }}
             onDrop={e => {
               e.preventDefault();
-              if (isEscalatedCol) {
-                dragIdRef.current = null;
-                setOverCol(null);
-                return;
-              }
               const raw = e.dataTransfer.getData("text/plain");
               const id = dragIdRef.current ?? (raw !== "" ? Number(raw) : null);
               if (id != null && !isNaN(id)) upStatus(id, col);
