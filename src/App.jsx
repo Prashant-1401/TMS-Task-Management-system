@@ -891,10 +891,10 @@ tbody tr:hover td{background:#FAFAFE;}tbody tr:last-child td{border-bottom:none;
 /* ─── MOBILE HAMBURGER MENU ─── */
 .mbl-menu-btn{display:none;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px 8px;z-index:400;}
 .mbl-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:399;}
-@media(max-width:768px){
+@media(max-width:1024px){
   .mbl-menu-btn{display:flex;align-items:center;justify-content:center;}
   .mbl-overlay.show{display:block;}
-  .app-sidebar{position:fixed!important;left:-260px;top:0;height:100vh;width:240px!important;z-index:401;transition:left .3s ease!important;}
+  .app-sidebar{position:fixed!important;left:-260px;top:0;height:100vh;height:100dvh;width:240px!important;z-index:401;transition:left .3s ease!important;}
   .app-sidebar.open{left:0!important;}
   .app-main{margin-left:0!important;}
   .app-content{padding:16px 12px!important;}
@@ -1578,6 +1578,21 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
 
   const navigatePage = (id) => { if (canAccessPage(id)) { setPage(id); setMobileMenuOpen(false); } };
 
+  // Auto-close mobile menu on orientation change (handles landscape ↔ portrait rotation)
+  useEffect(() => {
+    const onOrientationChange = () => { setMobileMenuOpen(false); };
+    const onResize = () => {
+      // On desktop (width > 1024px), always close mobile menu
+      if (window.innerWidth > 1024) setMobileMenuOpen(false);
+    };
+    window.addEventListener("orientationchange", onOrientationChange);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("orientationchange", onOrientationChange);
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg }}>
       {mobileMenuOpen && <div className="mbl-overlay show" onClick={() => setMobileMenuOpen(false)} />}
@@ -1690,7 +1705,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
             {userPerms.canEditActions && <button className="fab" style={{ position: "static", width: 36, height: 36, fontSize: 20 }} onClick={onQuickAdd} title="Quick add action">+</button>}
           </div>
         </div>
-        <style>{`.mbl-topbar{display:none!important;}@media(max-width:768px){.mbl-topbar{display:flex!important;}.fab:not(.mbl-topbar .fab){display:none!important;}}`}</style>
+        <style>{`.mbl-topbar{display:none!important;}@media(max-width:1024px){.mbl-topbar{display:flex!important;}.fab:not(.mbl-topbar .fab){display:none!important;}}`}</style>
 
         {/* Floating "Meeting Running" pill when away from Work page */}
         {activeMtg && page !== 1 && (
