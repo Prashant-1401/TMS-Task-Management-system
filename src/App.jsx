@@ -5235,7 +5235,6 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, 28);
     setTimeout(() => ghost.remove(), 0);
-    setDraggingId(a.id);
   };
 
   const handleMouseDown = (a) => {
