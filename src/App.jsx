@@ -5047,7 +5047,16 @@ function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortC
         document.head.appendChild(s);
       });
     }
-    const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#fff", useCORS: true });
+    const prevOverflow = el.style.overflow;
+    const prevFlex = el.style.flex;
+    const prevHeight = el.style.height;
+    el.style.overflow = "visible";
+    el.style.flex = "none";
+    el.style.height = "auto";
+    const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#fff", useCORS: true, scrollY: 0, windowWidth: el.scrollWidth, windowHeight: el.scrollHeight });
+    el.style.overflow = prevOverflow;
+    el.style.flex = prevFlex;
+    el.style.height = prevHeight;
     const link = document.createElement("a");
     link.download = `actions-capture-${new Date().toISOString().slice(0,10)}.png`;
     link.href = canvas.toDataURL("image/png");
