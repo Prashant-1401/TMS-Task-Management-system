@@ -2040,7 +2040,7 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
                   <td><SBadge s={a.status} /></td>
                   <td style={{ fontSize: 12, color: isOverdue(a) ? T.red : T.text, fontWeight: isOverdue(a) ? 600 : 400, whiteSpace: "nowrap" }}>{isOverdue(a) ? `${daysOver(a)}d overdue` : fmt(a.due)}</td>
                   <td><PBadge p={a.priority} /></td>
-                  <td style={{ textAlign: "center" }}>{(a.revisions || 0) > 0 ? <span style={{ fontWeight: 700, color: T.amber, fontSize: 12 }}>{a.revisions}</span> : <span style={{ color: T.text2, fontSize: 12 }}>—</span>}</td>
+                <td style={{ textAlign: "center" }}>{(a.revisions || 0) > 0 ? <span style={{ fontWeight: 700, color: T.amber, fontSize: 12 }}>{a.revisions}</span> : <span style={{ color: T.text2, fontSize: 12 }}>—</span>}</td>
                 </tr>
                 );
               })}
@@ -4852,6 +4852,11 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
       upAction(id, { status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false });
     }
   };
+  const deleteAction = (a) => {
+    if (!window.confirm(`Delete action "${a.sn}" — ${a.text?.slice(0, 50)}…? This cannot be undone.`)) return;
+    setActions(p => p.filter(x => x.id !== a.id));
+    apiRemove("actions", a.id);
+  };
   const allSections = scopedDepts(user, depts).map(d => d.name).filter(Boolean);
   const allResponsible = scopedUsers(user, users).map(u => u.name).filter(Boolean);
   const pendingConf = scoped.filter(a => a.pendingConfirmation && a.status !== "COMPLETED" && a.status !== "DROPPED");
@@ -4969,7 +4974,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
 
       </div>
       {openFilter && <div style={{ position: "fixed", inset: 0, zIndex: 599 }} onClick={() => { setOpenFilter(null); setDropPos(null); }} />}
-      {view === "table" && <TableView fa={fa} upStatus={upStatus} setSel={a => { setSel(a); }} canEdit={canEdit} upAction={upAction} sortState={userSortPref[userKey]} onSortChange={s => { userSortPref[userKey] = s; }} users={users} meetings={meetings} />}
+      {view === "table" && <TableView fa={fa} upStatus={upStatus} setSel={a => { setSel(a); }} canEdit={canEdit} upAction={upAction} sortState={userSortPref[userKey]} onSortChange={s => { userSortPref[userKey] = s; }} users={users} meetings={meetings} deleteAction={deleteAction} />}
       {view === "board" && <BoardView fa={fa} setSel={setSel} users={users} />}
       {view === "kanban" && <KanbanView
   fa={fa}
@@ -5035,7 +5040,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   );
 }
 
-function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortChange, users, meetings }) {
+function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortChange, users, meetings, deleteAction }) {
   const meetingMap = {}; (meetings || []).forEach(m => { meetingMap[m.id] = m; });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fsView, setFsView] = useState("table");
@@ -5131,6 +5136,7 @@ function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortC
             <TH k="due" label="Due Date" minWidth={100} />
             <TH k="status" label="Status" minWidth={130} />
             <TH k="revisions" label="Revisions" minWidth={80} style={{ textAlign: "center" }} />
+            {deleteAction && <th style={{ minWidth: 50 }}></th>}
           </tr></thead>
           <tbody>
             {sorted.map((a, idx) => {
@@ -5159,6 +5165,7 @@ function TableView({ fa, upStatus, setSel, canEdit, upAction, sortState, onSortC
                 <td style={{ fontSize: 12, color: isOverdue(a) ? T.red : T.text, whiteSpace: "nowrap" }}>{fmt(a.due)}</td>
                 <td onClick={e => e.stopPropagation()}><SBadge s={a.status} /></td>
                 <td style={{ textAlign: "center" }}>{(a.revisions || 0) > 0 ? <span style={{ fontWeight: 700, color: T.amber, fontSize: 12 }}>{a.revisions}</span> : <span style={{ color: T.text2, fontSize: 12 }}>—</span>}</td>
+                {deleteAction && <td style={{ textAlign: "center" }}>{status === "DROPPED" && <button onClick={e => { e.stopPropagation(); deleteAction(a); }} style={{ background: "transparent", color: T.red, border: `1px solid ${T.red}`, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>🗑 Delete</button>}</td>}
               </tr>
               );
             })}
