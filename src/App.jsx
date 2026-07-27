@@ -1699,7 +1699,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
             {autoStatus.status === "saving" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: T.amber, animation: "blink 1s infinite" }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.6)" }}>Saving…</span></>}
             {autoStatus.status === "saved" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.6)" }}>All changes saved</span></>}
             {autoStatus.status === "pending" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: T.amber }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.6)" }}>Pending {autoStatus.pending} save{autoStatus.pending !== 1 ? "s" : ""}</span></>}
-            {autoStatus.status === "idle" && <><span style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,255,255,.3)" }} /><span style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>Autosave on</span></>}
+
             <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "rgba(255,255,255,.5)" }} title={lastSync ? "Last synced " + new Date(lastSync).toLocaleTimeString() : "Live sync"}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: syncing ? T.amber : T.green, animation: syncing ? "blink 1s infinite" : "none" }} />
               {syncing ? "Syncing" : "Live"}
