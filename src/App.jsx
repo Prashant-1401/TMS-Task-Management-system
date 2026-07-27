@@ -4765,7 +4765,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   const [emailForm, setEmailForm] = useState({ responsible: "", email: "", status: "" });
   const [emailSending, setEmailSending] = useState(false);
   const canEdit = isUserAdmin(user) || getPerms(user).canEditActions;
-  const allProjects = [...new Set([...(projects || []).map(p => p.name), ...actions.map(a => a.projectName || a.project)].filter(Boolean))];
+  const allProjects = (projects || []).map(p => p.name).filter(Boolean);
 
   const changeView = v => { setView(v); userViewPref[userKey] = v; };
 
@@ -4848,8 +4848,8 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
     }
     upAction(id, { status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false });
   };
-  const allSections = [...new Set(scoped.map(a => a.section))].filter(Boolean);
-  const allResponsible = [...new Set(scoped.map(a => a.responsible))].filter(Boolean);
+  const allSections = scopedDepts(user, depts).map(d => d.name).filter(Boolean);
+  const allResponsible = scopedUsers(user, users).map(u => u.name).filter(Boolean);
   const pendingConf = scoped.filter(a => a.pendingConfirmation && a.status !== "COMPLETED" && a.status !== "DROPPED");
 
   // Feature 7: Export functions
