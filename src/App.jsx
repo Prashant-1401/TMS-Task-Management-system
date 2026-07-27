@@ -4898,6 +4898,13 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
           <button className="btn btn-ghost btn-sm" onClick={() => setEmailModal(true)} title="Email Actions" style={{ color: T.navy }}>✉ Email</button>
         </div>
       </PageHeader>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {[{ v: "table", icon: "☰", l: "Table" }, { v: "board", icon: "⊞", l: "Board", mobile: true }, { v: "kanban", icon: "▦", l: "Kanban", mobile: true }, { v: "timeline", icon: "━", l: "Timeline", mobile: true }].map(x => (
+          <button key={x.v} onClick={() => changeView(x.v)} className={x.mobile ? "hide-mobile" : ""} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${view === x.v ? T.navy : T.border}`, background: view === x.v ? T.navy : "transparent", color: view === x.v ? "#fff" : T.text2, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            {x.icon} {x.l}
+          </button>
+        ))}
+      </div>
 
       <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
         <div className="filter-bar" style={{ alignItems: "flex-end", marginBottom: 10 }}>
@@ -4954,13 +4961,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
             )))}
           </div>
         )}
-        <div style={{ display: "flex", gap: 6, borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
-          {[{ v: "table", icon: "☰", l: "Table" }, { v: "board", icon: "⊞", l: "Board", mobile: true }, { v: "kanban", icon: "▦", l: "Kanban", mobile: true }, { v: "timeline", icon: "━", l: "Timeline", mobile: true }].map(x => (
-            <button key={x.v} onClick={() => changeView(x.v)} className={x.mobile ? "hide-mobile" : ""} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${view === x.v ? T.navy : T.border}`, background: view === x.v ? T.navy : "transparent", color: view === x.v ? "#fff" : T.text2, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-              {x.icon} {x.l}
-            </button>
-          ))}
-        </div>
+
       </div>
       {openFilter && <div style={{ position: "fixed", inset: 0, zIndex: 599 }} onClick={() => { setOpenFilter(null); setDropPos(null); }} />}
       {view === "table" && <TableView fa={fa} upStatus={upStatus} setSel={a => { setSel(a); }} canEdit={canEdit} upAction={upAction} sortState={userSortPref[userKey]} onSortChange={s => { userSortPref[userKey] = s; }} users={users} meetings={meetings} />}
