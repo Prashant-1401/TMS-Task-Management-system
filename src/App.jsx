@@ -902,6 +902,9 @@ tbody tr:hover td{background:#FAFAFE;}tbody tr:last-child td{border-bottom:none;
   .page-header-actions{width:100%!important;justify-content:flex-start!important;flex-wrap:wrap;}
   .fab{bottom:20px;right:20px;width:48px;height:48px;font-size:22px;}
 }
+/* Hide Board/Kanban/Timeline view buttons on phones */
+@media(max-width:768px){.hide-mobile{display:none!important;}}
+@media(max-height:500px) and (orientation:landscape){.hide-mobile{display:none!important;}}
 /* Landscape phones: viewport width > 768px but height is small — hide sidebar */
 @media(max-height:500px) and (orientation:landscape){
   .mbl-menu-btn{display:flex;align-items:center;justify-content:center;}
@@ -4962,8 +4965,8 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
           </div>
         )}
         <div style={{ display: "flex", gap: 6, borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
-          {[{ v: "table", icon: "☰", l: "Table" }, { v: "board", icon: "⊞", l: "Board" }, { v: "kanban", icon: "▦", l: "Kanban" }, { v: "timeline", icon: "━", l: "Timeline" }].map(x => (
-            <button key={x.v} onClick={() => changeView(x.v)} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${view === x.v ? T.navy : T.border}`, background: view === x.v ? T.navy : "transparent", color: view === x.v ? "#fff" : T.text2, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+          {[{ v: "table", icon: "☰", l: "Table" }, { v: "board", icon: "⊞", l: "Board", mobile: true }, { v: "kanban", icon: "▦", l: "Kanban", mobile: true }, { v: "timeline", icon: "━", l: "Timeline", mobile: true }].map(x => (
+            <button key={x.v} onClick={() => changeView(x.v)} className={x.mobile ? "hide-mobile" : ""} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${view === x.v ? T.navy : T.border}`, background: view === x.v ? T.navy : "transparent", color: view === x.v ? "#fff" : T.text2, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               {x.icon} {x.l}
             </button>
           ))}
