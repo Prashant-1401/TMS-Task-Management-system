@@ -5242,11 +5242,12 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
   return (
     <div style={{
       display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+      gridTemplateColumns: "repeat(5, 1fr)",
       gap: 14,
       alignItems: "start",
       width: "100%",
-      paddingBottom: 100
+      paddingBottom: 100,
+      overflowX: "auto"
     }}>
       {["NOT STARTED", "IN PROCESS", "PENDING CONFIRM", "COMPLETED", "DROPPED"].map(col => {
         const c = SC[col] || { bg: "#eee", text: "#333", dot: "#aaa" };
