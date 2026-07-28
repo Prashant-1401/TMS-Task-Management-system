@@ -651,7 +651,12 @@ const isUserAdmin = (user) => {
   if (user.role === "Admin") return true;
   return false;
 };
-const canAccessMasterSetup = (user) => isUserAdmin(user) || user?.masterAccess === true || user?.master_access === true;
+const canAccessMasterSetup = (user) => {
+  if (!user) return false;
+  const isMasterExplicit = user.masterAccess === true || user.master_access === true;
+  const isAllPlants = !user.plant || user.plant === "All";
+  return isUserAdmin(user) || (isMasterExplicit && isAllPlants);
+};
 
 // Plant-scoping helpers: non-admin users only see data from their own plant.
 // user.plant may be a plant ID ("P2") or a plant name ("Adroit Driveshaft").
