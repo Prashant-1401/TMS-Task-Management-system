@@ -5278,8 +5278,11 @@ function KanbanView({ fa, upStatus, canEdit, users, setSel, user }) {
             onDrop={e => {
               e.preventDefault();
               const raw = e.dataTransfer.getData("text/plain");
-              const id = dragIdRef.current ?? (raw !== "" ? Number(raw) : null);
-              if (id != null && !isNaN(id)) upStatus(id, col);
+              let id = dragIdRef.current;
+              if (id == null && raw !== "") {
+                id = !isNaN(raw) ? Number(raw) : raw;
+              }
+              if (id != null && id !== "") upStatus(id, col);
               dragIdRef.current = null;
               setOverCol(null);
             }}
