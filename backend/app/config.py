@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     google_sheets_credentials_path: str = ""
     google_sheets_spreadsheet_id: str = ""
     google_sheets_worksheet_name: str = "Actions"
+    use_google_sheets_as_db: bool = False  # Set true to use Google Sheets as primary DB (instead of Postgres)
 
     class Config:
         env_file = os.path.join(_BACKEND_DIR, ".env")

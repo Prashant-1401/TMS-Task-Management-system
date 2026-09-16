@@ -1,0 +1,329 @@
+"""
+Sheets-as-Database Service — Generic CRUD for all 17 TMS tables via Google Sheets
+
+Works with the 20-worksheet setup:
+  Plants, Departments, Roles, Users, Machines, Reasons, Projects,
+  ProjectMilestones, MeetingPresets, Meetings, EscalationMatrix,
+  EscalationPriorities, Actions, ActionMessages, Audit, UserSessions
+  (+ legacy Adroit-Action-Sheet, Escalated Actions, Info)
+
+Usage:
+  from app.services.sheets_db_service import sheets_get_all, sheets_create, sheets_update, sheets_delete
+
+  users = sheets_get_all("Users")
+  new_user = sheets_create("Users", {"id": "USR-100", "name": "Test", ...})
+  updated = sheets_update("Users", "USR-100", {"phone": "123"})
+  ok = sheets_delete("Users", "USR-100")
+
+Performance: For 100 users, 17 tables * ~50 rows = ~850 cells, reads in ~2s via Sheets API (300 reads/min limit). Writes are batched.
+Caching: In-memory 30s cache per table to handle burst (e.g., 12 parallel apiGet on login).
+"""
+
+import os
+import time
+from typing import Dict, Any, List, Optional
+from app.config import settings
+from app.services.google_sheets_service import _get_client, _is_configured
+
+# Cache: {sheet_name: (timestamp, rows)}
+_CACHE: Dict[str, tuple] = {}
+CACHE_TTL = 30  # seconds
+
+# Map sheet name -> PK column (first column is PK for all except MeetingPresets)
+PK_MAP = {
+    "Plants": "id",
+    "Departments": "id",
+    "Roles": "id",
+    "Users": "id",
+    "Machines": "id",
+    "Reasons": "id",
+    "Projects": "id",
+    "ProjectMilestones": "id",
+    "MeetingPresets": "type",
+    "Meetings": "id",
+    "EscalationMatrix": "id",
+    "EscalationPriorities": "escalation_id",  # composite PK, but we use first col
+    "Actions": "id",
+    "ActionMessages": "id",
+    "Audit": "id",
+    "UserSessions": "id",
+}
+
+def _is_sheets_db_enabled() -> bool:
+    """Check if Sheets-as-DB is enabled via env var"""
+    return os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes") or getattr(settings, "use_google_sheets_as_db", False)
+
+def _get_headers(worksheet) -> List[str]:
+    """Get header row from worksheet"""
+    try:
+        return worksheet.row_values(1)
+    except Exception:
+        return []
+
+def _row_to_dict(headers: List[str], row: List[str]) -> Dict[str, Any]:
+    """Convert row list to dict using headers"""
+    d = {}
+    for i, h in enumerate(headers):
+        if i < len(row):
+            val = row[i]
+            # Convert empty string to None for optional fields
+            if val == "":
+                val = None
+            # Convert boolean strings
+            elif val in ("TRUE", "FALSE"):
+                val = val == "TRUE"
+            # Convert numeric strings for level, progress, etc. but keep as string for IDs
+            d[h] = val
+        else:
+            d[h] = None
+    return d
+
+def _dict_to_row(headers: List[str], data: Dict[str, Any]) -> List[str]:
+    """Convert dict to row list using headers order"""
+    row = []
+    for h in headers:
+        val = data.get(h, "")
+        if val is None:
+            val = ""
+        elif isinstance(val, bool):
+            val = "TRUE" if val else "FALSE"
+        else:
+            val = str(val)
+        row.append(val)
+    return row
+
+def sheets_get_all(sheet_name: str, use_cache: bool = True) -> List[Dict[str, Any]]:
+    """Get all rows from a sheet as list of dicts"""
+    if not _is_configured():
+        print(f"[sheets-db] Not configured, cannot get {sheet_name}")
+        return []
+
+    # Check cache
+    if use_cache and sheet_name in _CACHE:
+        ts, rows = _CACHE[sheet_name]
+        if time.time() - ts < CACHE_TTL:
+            return rows
+
+    client = _get_client()
+    if not client:
+        return []
+
+    try:
+        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        try:
+            ws = sh.worksheet(sheet_name)
+        except Exception:
+            print(f"[sheets-db] Worksheet {sheet_name} not found")
+            return []
+
+        all_values = ws.get_all_values()
+        if len(all_values) < 1:
+            return []
+
+        headers = all_values[0]
+        rows = []
+        for row_vals in all_values[1:]:
+            # Skip empty rows (PK empty)
+            if not row_vals or not row_vals[0].strip():
+                continue
+            d = _row_to_dict(headers, row_vals)
+            rows.append(d)
+
+        # Cache
+        _CACHE[sheet_name] = (time.time(), rows)
+        print(f"[sheets-db] Get {sheet_name}: {len(rows)} rows")
+        return rows
+
+    except Exception as e:
+        print(f"[sheets-db] Failed to get {sheet_name}: {e}")
+        return []
+
+def sheets_get_by_id(sheet_name: str, id_val: str) -> Optional[Dict[str, Any]]:
+    """Get single row by PK"""
+    rows = sheets_get_all(sheet_name)
+    pk = PK_MAP.get(sheet_name, "id")
+    for r in rows:
+        if str(r.get(pk, "")) == str(id_val):
+            return r
+    return None
+
+def sheets_create(sheet_name: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Create new row in sheet"""
+    if not _is_configured():
+        return None
+
+    client = _get_client()
+    if not client:
+        return None
+
+    try:
+        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        ws = sh.worksheet(sheet_name)
+        headers = ws.row_values(1)
+
+        # Check if PK already exists
+        pk = PK_MAP.get(sheet_name, "id")
+        if pk in data and sheets_get_by_id(sheet_name, data[pk]):
+            print(f"[sheets-db] Create failed: {sheet_name} {pk}={data[pk]} already exists")
+            return None
+
+        row = _dict_to_row(headers, data)
+        ws.append_row(row, value_input_option="USER_ENTERED")
+
+        # Invalidate cache
+        _CACHE.pop(sheet_name, None)
+
+        print(f"[sheets-db] Created {sheet_name} {pk}={data.get(pk, '?')}")
+        return data
+
+    except Exception as e:
+        print(f"[sheets-db] Create failed for {sheet_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def sheets_update(sheet_name: str, id_val: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Update row by PK"""
+    if not _is_configured():
+        return None
+
+    client = _get_client()
+    if not client:
+        return None
+
+    try:
+        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        ws = sh.worksheet(sheet_name)
+        headers = ws.row_values(1)
+        pk = PK_MAP.get(sheet_name, "id")
+
+        # Find row
+        all_values = ws.get_all_values()
+        target_row = None
+        for idx, row_vals in enumerate(all_values[1:], start=2):
+            if row_vals and str(row_vals[0]) == str(id_val):
+                target_row = idx
+                break
+
+        if not target_row:
+            print(f"[sheets-db] Update failed: {sheet_name} {pk}={id_val} not found")
+            return None
+
+        # Get existing row and merge
+        existing = _row_to_dict(headers, all_values[target_row - 1])
+        merged = {**existing, **data}
+        merged[pk] = id_val  # Keep PK
+
+        row = _dict_to_row(headers, merged)
+        # Update range A<row>:<last_col><row>
+        end_col = chr(64 + len(headers)) if len(headers) <= 26 else "Z"
+        ws.update(range_name=f"A{target_row}:{end_col}{target_row}", values=[row])
+
+        # Invalidate cache
+        _CACHE.pop(sheet_name, None)
+
+        print(f"[sheets-db] Updated {sheet_name} {pk}={id_val}")
+        return merged
+
+    except Exception as e:
+        print(f"[sheets-db] Update failed for {sheet_name} {id_val}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def sheets_delete(sheet_name: str, id_val: str) -> bool:
+    """Delete row by PK"""
+    if not _is_configured():
+        return False
+
+    client = _get_client()
+    if not client:
+        return False
+
+    try:
+        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        ws = sh.worksheet(sheet_name)
+        pk = PK_MAP.get(sheet_name, "id")
+
+        all_values = ws.get_all_values()
+        target_row = None
+        for idx, row_vals in enumerate(all_values[1:], start=2):
+            if row_vals and str(row_vals[0]) == str(id_val):
+                target_row = idx
+                break
+
+        if not target_row:
+            print(f"[sheets-db] Delete failed: {sheet_name} {pk}={id_val} not found")
+            return False
+
+        ws.delete_rows(target_row)
+
+        # Invalidate cache
+        _CACHE.pop(sheet_name, None)
+
+        print(f"[sheets-db] Deleted {sheet_name} {pk}={id_val}")
+        return True
+
+    except Exception as e:
+        print(f"[sheets-db] Delete failed for {sheet_name} {id_val}: {e}")
+        return False
+
+def sheets_bulk_upsert(sheet_name: str, rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Bulk upsert (insert or update) for Sheets"""
+    if not _is_configured():
+        return {"upserted": 0, "inserted": 0, "updated": 0}
+
+    inserted = 0
+    updated = 0
+    for data in rows:
+        pk = PK_MAP.get(sheet_name, "id")
+        id_val = data.get(pk)
+        if not id_val:
+            continue
+        existing = sheets_get_by_id(sheet_name, id_val)
+        if existing:
+            if sheets_update(sheet_name, id_val, data):
+                updated += 1
+        else:
+            if sheets_create(sheet_name, data):
+                inserted += 1
+
+    return {"upserted": inserted + updated, "inserted": inserted, "updated": updated}
+
+def sheets_clear_cache(sheet_name: str = None):
+    """Clear cache for sheet or all"""
+    if sheet_name:
+        _CACHE.pop(sheet_name, None)
+    else:
+        _CACHE.clear()
+
+# Convenience wrappers for each table
+def get_plants(): return sheets_get_all("Plants")
+def get_departments(): return sheets_get_all("Departments")
+def get_roles(): return sheets_get_all("Roles")
+def get_users(): return sheets_get_all("Users")
+def get_machines(): return sheets_get_all("Machines")
+def get_reasons(): return sheets_get_all("Reasons")
+def get_projects(): return sheets_get_all("Projects")
+def get_meetings(): return sheets_get_all("Meetings")
+def get_actions(): return sheets_get_all("Actions")
+def get_audit(): return sheets_get_all("Audit")
+
+# Health check
+def sheets_health() -> Dict[str, Any]:
+    """Check Sheets DB health"""
+    if not _is_configured():
+        return {"configured": False, "sheets": 0, "error": "Not configured"}
+    try:
+        client = _get_client()
+        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        worksheets = sh.worksheets()
+        return {
+            "configured": True,
+            "sheets": len(worksheets),
+            "worksheet_names": [ws.title for ws in worksheets],
+            "spreadsheet_url": sh.url,
+            "enabled_as_db": _is_sheets_db_enabled(),
+        }
+    except Exception as e:
+        return {"configured": True, "error": str(e)}

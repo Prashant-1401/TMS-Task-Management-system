@@ -289,6 +289,8 @@ async def root():
 
 @app.get("/api/health")
 async def health():
+    from app.services.sheets_db_service import sheets_health
+    sheets = sheets_health()
     return {
         "status": "ok",
         "gemini_configured": bool(settings.gemini_api_key),
@@ -297,6 +299,9 @@ async def health():
         "wacrm_gateway_configured": bool(settings.wacrm_alert_url),
         "api_key_auth_enabled": bool(settings.api_key),
         "cors_locked": bool(origins and origins != ["*"]),
+        "sheets_configured": sheets.get("configured", False),
+        "sheets_as_db": sheets.get("enabled_as_db", False),
+        "sheets_count": sheets.get("sheets", 0),
     }
 
 
