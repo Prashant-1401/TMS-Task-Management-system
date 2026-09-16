@@ -52,6 +52,12 @@ services:
         value: master
       - key: MASTER_PASSWORD
         sync: false           # e.g. adroit@master2025 — change!
+      - key: GOOGLE_SHEETS_SPREADSHEET_ID
+        value: 1UOF1dGoOkTTGFRvj72zN4tbn7pJD2jVxqkqL07KHQ7w
+      - key: GOOGLE_SHEETS_WORKSHEET_NAME
+        value: Adroit-Action-Sheet
+      - key: GOOGLE_SHEETS_CREDENTIALS_JSON
+        sync: false           # Paste full JSON from tms-service-account.json (or set GOOGLE_SHEETS_CREDENTIALS_PATH via Secret File)
 
   # ── Frontend — Vite React 19 (Static Site) ──
   - type: web
