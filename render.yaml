@@ -32,10 +32,10 @@ services:
       - key: API_KEY
         generateValue: true   # must match frontend VITE_API_KEY — set both to same value e.g. 0114cccb4238d3faa118e312dbe75abe
       - key: ALLOWED_ORIGINS
-        value: https://tms-control-management.vercel.app,http://localhost:5173
+        value: https://tms-task-mangement-system.vercel.app,https://tms-control-management.vercel.app,http://localhost:5173
         # After frontend deploys, add its URL here: https://tms-frontend.onrender.com,https://tms.yourdomain.com
       - key: FRONTEND_URL
-        value: https://tms-frontend.onrender.com
+        value: https://tms-task-mangement-system.vercel.app
       - key: GEMINI_API_KEY
         sync: false           # set in Dashboard — from https://aistudio.google.com
       - key: GEMINI_MODEL

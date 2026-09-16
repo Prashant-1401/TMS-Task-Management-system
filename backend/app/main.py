@@ -247,6 +247,7 @@ if not origins:
     origins = ["*"]
 else:
     known = [
+        "https://tms-task-mangement-system.vercel.app",
         "https://tms-control-management.vercel.app",
         "https://tms-control-management-g9uaoyxl1.vercel.app",
         "https://mcs-control-management.vercel.app",
