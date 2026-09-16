@@ -2,14 +2,35 @@ node_modules/
 dist/
 backend/.env
 backend/venv/
+backend/alembic/
 **/__pycache__/
 **/*.pyc
 **/*.pyo
 backend/.pytest_cache/
 .env
+.env.local
+.env.production
 .DS_Store
 *.log
 *.json
 !package.json
 !package-lock.json
+!firebase.json
+!firestore.rules
+!firestore.indexes.json
+!storage.rules
+!.firebaserc
+# Service account keys & secrets
+genuine-*.json
+*service-account*.json
+*serviceAccount*.json
+firebase-service-account.json
 nohup.out
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+# Build & cache
+.cache/
+.cost_tmp/
+# One-off exports
+*.pdf
