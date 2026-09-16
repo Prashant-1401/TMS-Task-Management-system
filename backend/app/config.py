@@ -5,7 +5,7 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/mcsdb"
+    database_url: str = ""  # Optional when USE_GOOGLE_SHEETS_AS_DB=true (Sheets primary, no Postgres needed)
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash-lite"
     secret_key: str = "change-me-to-a-random-secret"

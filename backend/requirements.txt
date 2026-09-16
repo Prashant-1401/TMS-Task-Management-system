@@ -18,3 +18,4 @@ requests>=2.31.0
 gspread>=6.0.0
 google-auth>=2.0.0
 gunicorn>=22.0.0
+aiosqlite>=0.22.0  # for Sheets primary mode (dummy SQLite when DATABASE_URL not set)

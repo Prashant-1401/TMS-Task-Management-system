@@ -18,10 +18,13 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.3
       - key: DATABASE_URL
-        # Neon pooled URL (asyncpg) — keep ?sslmode=require, or use Render Postgres internal URL after creation
-        fromDatabase:
-          name: tms-db
-          property: connectionString
+        # Optional when USE_GOOGLE_SHEETS_AS_DB=true (Sheets primary, zero Postgres cost) — leave empty or set to dummy
+        # For Postgres primary: use Neon pooled URL ?sslmode=require or Render Postgres internal URL
+        # For Sheets primary: set to "" or comment out, backend will use dummy SQLite
+        value: ""
+        # fromDatabase:
+        #   name: tms-db
+        #   property: connectionString
         # For Neon: paste manually in Dashboard → Environment → DATABASE_URL = postgresql+asyncpg://neondb_owner:...@ep-...-pooler.neon.tech/neondb?sslmode=require
       - key: SECRET_KEY
         generateValue: true   # openssl rand -hex 32 — override with your own for JWT stability

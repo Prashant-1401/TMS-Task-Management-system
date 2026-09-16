@@ -15,16 +15,24 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-            await conn.run_sync(migrate_schema)
-        print("[lifespan] Database schema initialized successfully")
-    except Exception as e:
-        print(f"[lifespan] Database initialization warning: {e}")
-        print("[lifespan] Server will continue — some tables may need manual creation")
+    import os
+    is_sheets = os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes") or getattr(settings, "use_google_sheets_as_db", False)
+    if is_sheets:
+        print("[lifespan] Sheets primary mode — skipping Postgres schema init (using Google Sheets)")
+    else:
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+                await conn.run_sync(migrate_schema)
+            print("[lifespan] Database schema initialized successfully")
+        except Exception as e:
+            print(f"[lifespan] Database initialization warning: {e}")
+            print("[lifespan] Server will continue — some tables may need manual creation")
     yield
-    await engine.dispose()
+    try:
+        await engine.dispose()
+    except Exception:
+        pass
 
 
 def migrate_schema(conn):
