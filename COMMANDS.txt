@@ -1,0 +1,192 @@
+# TMS — All Important Commands (Rebrand MCS → TMS, Hardening, Sheets, Render Fix)
+# Generated: 2026-09-17  Repo: https://github.com/Prashant702/TMS-Task-Mangement-system  Branch: main (b527d5d → d8fa228)
+# Usage: copy-paste each block as needed
+
+# =============================================================================
+# 1) BRANDING — MCS → TMS (Task Management System)
+# =============================================================================
+# Backend
+sed -i 's|mcs-control-management|tms-control-management|g' backend/app/main.py
+sed -i 's|MCS Backend API|TMS Backend API|' backend/app/main.py
+sed -i 's|Management Control System|Task Management System|' backend/app/main.py
+# Frontend
+# src/App.jsx: 1127 Management Control System → Task Management System
+# src/App.jsx: 1620 MCS → TMS, 1622 Management Control System → Task Management System
+# src/App.jsx: 1711 MCS Actions → TMS Tasks, 1998 Home › TMS, 4890 Actions Register → Tasks Register
+# src/App.jsx: 6948 window.MCS_API → window.TMS_API = window.MCS_API (keep legacy)
+# Email
+sed -i 's/MCS/TMS/g; s/Management Control System/Task Management System/g' backend/app/services/email_service.py
+sed -i 's/MCS/TMS/g' backend/send_welcome_all.py backend/send_pending_actions.py backend/send_mcs2026.py backend/app/routers/email_share.py
+# Docs + Excel
+sed -i 's/MCS/TMS/g; s/Management Control System/Task Management System/g' SOFTWARE_PRICING_AND_SERVERS.md BACKEND_DATABASE_LOW_COST.md LOCAL_SERVER.md
+python3 /tmp/generate_excel_db.py  # regenerates TMS_Database_Current.xlsx 22 sheets
+
+# =============================================================================
+# 2) HARDENING FOR 100 USERS (pool 20/30, gunicorn -w 4, pagination)
+# =============================================================================
+# backend/app/database.py: pool_size 5→20, max_overflow 10→30
+# backend/Procfile: uvicorn → gunicorn -w 4 --chdir backend
+# backend/requirements.txt: add gunicorn>=22.0.0, aiosqlite>=0.22.0
+# Routers pagination: actions/users/meetings/audit skip/limit 500
+# Fix venv pip path (was MCS ACTION IS → Projects/mcs-app):
+sed -i "s|/home/prashant/MCS ACTION IS|/home/prashant/Projects/mcs-app|g" backend/venv/bin/*
+
+# =============================================================================
+# 3) GOOGLE SHEETS AS DATABASE (20 sheets, 100 users, ₹0)
+# =============================================================================
+# Create sheets from Excel:
+backend/venv/bin/python << 'PY'
+import sys; sys.path.insert(0,'backend')
+from app.services.google_sheets_service import _get_client
+from app.config import settings
+import openpyxl
+wb=openpyxl.load_workbook('TMS_Database_Current.xlsx',data_only=True)
+client=_get_client(); sh=client.open_by_key(settings.google_sheets_spreadsheet_id)
+for s in wb.sheetnames:
+  if s in ['README','DB_Schema','Enums','Indexes','Relationships','Import_Guide']: continue
+  ws=wb[s]; headers=[ws.cell(3,c).value for c in range(1,ws.max_column+1) if ws.cell(3,c).value]
+  try: gws=sh.worksheet(s)
+  except: gws=sh.add_worksheet(s,100,len(headers)); gws.update("A1",[headers])
+PY
+
+# Populate seed data (Plants 4, Users 3, Actions 2...):
+backend/venv/bin/python scripts/setup_sheets_db.py
+backend/venv/bin/python scripts/setup_sheets_db.py --verify
+
+# Sheets DB service test:
+USE_GOOGLE_SHEETS_AS_DB=true backend/venv/bin/python -c "import sys; sys.path.insert(0,'backend'); from app.services.sheets_db_service import sheets_health; print(sheets_health())"
+# Enable Sheets primary:
+echo "USE_GOOGLE_SHEETS_AS_DB=true" >> backend/.env
+# Render: add env USE_GOOGLE_SHEETS_AS_DB=true + GOOGLE_SHEETS_CREDENTIALS_JSON=<paste JSON> + GOOGLE_SHEETS_SPREADSHEET_ID=1UOF1dGoOk...H7w
+
+# =============================================================================
+# 4) ENV FIXES (quotes, SECRET_KEY, persistent path)
+# =============================================================================
+# Generate new SECRET_KEY 64 hex:
+openssl rand -hex 32
+# Fix backend/.env: remove quotes, new SECRET_KEY, persistent Sheets path
+mkdir -p backend/secrets && cp /tmp/tms-sheets/tms-service-account.json backend/secrets/tms-service-account.json
+cat > backend/.env <<'EOF'
+ALLOWED_ORIGINS=https://tms-task-mangement-system.vercel.app,https://tms-control-management.vercel.app,http://localhost:5173
+FRONTEND_URL=https://tms-task-mangement-system.vercel.app
+API_KEY=0114cccb4238d3faa118e312dbe75abe
+# DATABASE_URL commented when Sheets primary (dummy SQLite used)
+# DATABASE_URL=postgresql+asyncpg://neondb_owner:...@ep-...neon.tech/neondb?sslmode=require
+GEMINI_API_KEY=AQ.Ab8RN6Il...
+GEMINI_MODEL=gemini-3.1-flash-lite
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=480
+SECRET_KEY=26f745a53bd2aa45a304875fbf49444a4573471dc8194f6b5b0cb0cc3fe4daf6
+SMTP_HOST=smtp.gmail.com
+SMTP_PASSWORD=qxnb gxka kghp ilxc
+SMTP_PORT=587
+SMTP_USER=mcsadmincontrol@gmail.com
+MASTER_USER=master
+MASTER_PASSWORD=adroit@master2025
+GOOGLE_SHEETS_CREDENTIALS_PATH=/home/prashant/Projects/mcs-app/backend/secrets/tms-service-account.json
+GOOGLE_SHEETS_SPREADSHEET_ID=1UOF1dGoOkTTGFRvj72zN4tbn7pJD2jVxqkqL07KHQ7w
+GOOGLE_SHEETS_WORKSHEET_NAME=Adroit-Action-Sheet
+USE_GOOGLE_SHEETS_AS_DB=true
+EOF
+# Recreate root template (was deleted):
+cat > .env.example <<'EOF'
+VITE_API_BASE_URL=https://mcs-action-is-1.onrender.com
+VITE_API_KEY=0114cccb4238d3faa118e312dbe75abe
+EOF
+# Verify:
+backend/venv/bin/python -c "import sys; sys.path.insert(0,'backend'); from app.config import settings; print(settings.database_url[:20], settings.secret_key[:10])"
+
+# =============================================================================
+# 5) DATABASE_URL OPTIONAL (Sheets primary, no Neon)
+# =============================================================================
+# backend/app/config.py: database_url: str = "" (optional when Sheets true)
+# backend/app/database.py: if Sheets and no DATABASE_URL → sqlite+aiosqlite:///:memory: dummy
+# backend/app/main.py: lifespan skips Postgres create_all when Sheets true
+# render.yaml: DATABASE_URL value: "" (optional), databases: tms-db optional
+# backend/requirements.txt: add aiosqlite>=0.22.0
+# backend/.env: comment DATABASE_URL when Sheets true
+
+# =============================================================================
+# 6) LOCAL SERVER (100 users, on-prem)
+# =============================================================================
+# .env frontend for local:
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+echo "VITE_API_KEY=0114cccb4238d3faa118e312dbe75abe" >> .env
+# backend still USE_GOOGLE_SHEETS_AS_DB=true (Sheets) or false (Neon)
+# Start:
+chmod +x start-local.sh
+./start-local.sh          # dev: uvicorn --reload :8000 + vite :5173
+./start-local.sh --prod   # prod: gunicorn -w 4 :8000 + vite preview :4173
+# Health:
+curl http://localhost:8000/api/health | jq .sheets_as_db,.sheets_count
+curl -H "x-api-key: 0114cccb4238d3faa118e312dbe75abe" http://localhost:8000/api/plants/ | jq length
+curl http://localhost:8000/docs
+# Import 100 users:
+backend/venv/bin/python scripts/import_from_excel.py --excel TMS_Database_Current.xlsx --replace --dry-run
+backend/venv/bin/python scripts/import_from_excel.py --excel TMS_Database_Current.xlsx --replace
+
+# =============================================================================
+# 7) RENDER DEPLOY (Backend + Frontend + DB) — Fixed Build
+# =============================================================================
+# Fix: rootDir backend caused Poetry to miss requirements.txt
+# BEFORE: rootDir: backend, build pip install -r requirements.txt → ERROR
+# AFTER:  build pip install -r backend/requirements.txt, start gunicorn --chdir backend (no rootDir)
+# File: render.yaml already fixed in repo
+# One-click:
+# git push tms702 main  # autoDeploy true → Render builds tms-backend (starter ₹595) + tms-frontend (static free)
+# Manual:
+# Render Dashboard → New + → Blueprint → Connect Prashant702/TMS-Task-Mangement-system → Apply
+# Fill sync:false vars: DATABASE_URL (or "" for Sheets), SECRET_KEY, API_KEY, GEMINI_API_KEY, SMTP_*, GOOGLE_SHEETS_*, USE_GOOGLE_SHEETS_AS_DB=true
+# Verify:
+curl https://tms-backend.onrender.com/api/health | jq
+curl -I https://tms-task-mangement-system.vercel.app/  # Vercel frontend 200 tms-app — Task Management System
+
+# =============================================================================
+# 8) GIT — COMMIT & PUSH TO NEW REPO (Prashant702)
+# =============================================================================
+git status --short
+git add -A
+git commit -m "rebrand: MCS → TMS + hardening + Sheets DB + env fix + Render build fix"
+git log --oneline -3
+# Add remote (once):
+git remote add tms702 https://github.com/Prashant702/TMS-Task-Mangement-system.git
+# Push (Prashant-1401 is collaborator, invite 333342459 accepted):
+git push tms702 main --force
+# Mirrors:
+git push tms main      # Prashant-1401/TMS-Task-Management-system
+git push origin-new main  # Prashant-1401/mcs-action-is
+
+# If 404 private: Prashant702 → Settings → Access → Add people → Prashant-1401 → Write → accept: gh api -X PATCH user/repository_invitations/ID
+# Check: gh repo view Prashant702/TMS-Task-Mangement-system --json url,visibility
+# Vercel: https://tms-task-mangement-system.vercel.app/ (already live tms-app)
+
+# =============================================================================
+# 9) ENV VARS TO SHARE ON RENDER (tms-backend)
+# =============================================================================
+# Required when Sheets primary:
+# DATABASE_URL="" or commented (optional)
+# SECRET_KEY=26f745a53bd2aa45a304875fbf49444a4573471dc8194f6b5b0cb0cc3fe4daf6
+# API_KEY=0114cccb4238d3faa118e312dbe75abe (must == frontend VITE_API_KEY)
+# ALLOWED_ORIGINS=https://tms-task-mangement-system.vercel.app,http://localhost:5173
+# FRONTEND_URL=https://tms-task-mangement-system.vercel.app
+# GEMINI_API_KEY=AQ.Ab8RN6Il...
+# SMTP_HOST/PORT/USER/PASSWORD
+# GOOGLE_SHEETS_CREDENTIALS_JSON=<paste JSON 2.4K> (Render) or GOOGLE_SHEETS_CREDENTIALS_PATH (local)
+# GOOGLE_SHEETS_SPREADSHEET_ID=1UOF1dGoOkTTGFRvj72zN4tbn7pJD2jVxqkqL07KHQ7w
+# USE_GOOGLE_SHEETS_AS_DB=true
+
+# Frontend (Vercel or Render static):
+# VITE_API_BASE_URL=https://tms-backend.onrender.com (or https://mcs-action-is-1.onrender.com until cutover)
+# VITE_API_KEY=0114cccb4238d3faa118e312dbe75abe
+
+# =============================================================================
+# 10) QUICK VERIFY AFTER DEPLOY
+# =============================================================================
+curl https://mcs-action-is-1.onrender.com/api/health | jq
+curl -H "Origin: https://tms-task-mangement-system.vercel.app" https://mcs-action-is-1.onrender.com/api/health -I | grep Access-Control
+curl -X POST https://mcs-action-is-1.onrender.com/api/auth/login -H "x-api-key: 0114cccb4238d3faa118e312dbe75abe" -H "Content-Type: application/json" -d '{"username":"prashant","password":"TMS2026"}' | jq
+npm run build  # 540kB gzip 142kB dist/
+
+# Excel DB:
+# TMS_Database_Current.xlsx 22 sheets, DB/TMS_Database.xlsx, /tmp/mcs-frontend-backend-only-backup/DB/mcs_db.sql 69KB backup
+# Import: python backend/scripts/import_from_excel.py --excel TMS_Database_Current.xlsx --replace
