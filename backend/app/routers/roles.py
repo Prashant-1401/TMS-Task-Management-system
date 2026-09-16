@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -11,12 +12,37 @@ router = APIRouter(prefix="/api/roles", tags=["Roles"], dependencies=[Depends(re
 
 @router.get("/")
 async def list_roles(db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        rows = sheets_get_all("Roles", use_cache=True)
+        return rows
     result = await db.execute(select(Role))
     return result.scalars().all()
 
 
+@router.get("/{role_id}")
+async def get_role(role_id: str, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_by_id
+        row = sheets_get_by_id("Roles", role_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Role not found")
+        return row
+    result = await db.execute(select(Role).where(Role.id == role_id))
+    role = result.scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return role
+
+
 @router.post("/")
 async def create_role(data: RoleCreate, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_create
+        row = sheets_create("Roles", data.model_dump())
+        if not row:
+            raise HTTPException(status_code=400, detail="Failed to create role in Sheets")
+        return row
     role = Role(**data.model_dump())
     db.add(role)
     await db.commit()
@@ -26,6 +52,12 @@ async def create_role(data: RoleCreate, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/{role_id}")
 async def update_role(role_id: str, data: RoleUpdate, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_update
+        row = sheets_update("Roles", role_id, data.model_dump(exclude_unset=True))
+        if not row:
+            raise HTTPException(status_code=404, detail="Role not found")
+        return row
     result = await db.execute(select(Role).where(Role.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
@@ -39,6 +71,11 @@ async def update_role(role_id: str, data: RoleUpdate, db: AsyncSession = Depends
 
 @router.delete("/{role_id}")
 async def delete_role(role_id: str, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_delete
+        if not sheets_delete("Roles", role_id):
+            raise HTTPException(status_code=404, detail="Role not found")
+        return {"ok": True}
     result = await db.execute(select(Role).where(Role.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
@@ -50,6 +87,10 @@ async def delete_role(role_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/bulk")
 async def bulk_upsert_roles(rows: list[RoleCreate], db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_bulk_upsert
+        result = sheets_bulk_upsert("Roles", [r.model_dump() for r in rows])
+        return {"ok": True, "upserted": result.get("upserted", 0)}
     upserted = 0
     for data in rows:
         result = await db.execute(select(Role).where(Role.id == data.id))

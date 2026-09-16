@@ -58,6 +58,8 @@ services:
         value: Adroit-Action-Sheet
       - key: GOOGLE_SHEETS_CREDENTIALS_JSON
         sync: false           # Paste full JSON from tms-service-account.json (or set GOOGLE_SHEETS_CREDENTIALS_PATH via Secret File)
+      - key: USE_GOOGLE_SHEETS_AS_DB
+        value: "true"           # Set "true" to use Sheets as primary DB (₹0), "false" for Postgres primary + Sheets mirror (recommended 100 users)
 
   # ── Frontend — Vite React 19 (Static Site) ──
   - type: web

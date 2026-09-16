@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +15,28 @@ router = APIRouter(prefix="/api/escalation", tags=["Escalation"], dependencies=[
 
 @router.get("/matrix")
 async def list_escalation_matrix(db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        rows = sheets_get_all("EscalationMatrix", use_cache=True)
+        return rows
     result = await db.execute(select(EscalationMatrix))
     return result.scalars().all()
 
 
 @router.post("/matrix")
 async def create_escalation_tier(data: EscalationMatrixCreate, bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_create
+        row = sheets_create("EscalationMatrix", data.model_dump())
+        if not row:
+            raise HTTPException(status_code=400, detail="Failed to create escalation tier in Sheets")
+        # Sheets mode: sync is via sheets_db_service directly, no need for bg sync to legacy sheets
+        # Still queue legacy sync for compatibility if configured
+        try:
+            bg.add_task(_bg_sync_escalation_matrix)
+        except Exception:
+            pass
+        return row
     tier = EscalationMatrix(**data.model_dump())
     db.add(tier)
     await db.commit()
@@ -30,6 +47,16 @@ async def create_escalation_tier(data: EscalationMatrixCreate, bg: BackgroundTas
 
 @router.patch("/matrix/{tier_id}")
 async def update_escalation_tier(tier_id: str, data: EscalationMatrixUpdate, bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_update
+        row = sheets_update("EscalationMatrix", tier_id, data.model_dump(exclude_unset=True))
+        if not row:
+            raise HTTPException(status_code=404, detail="Escalation tier not found")
+        try:
+            bg.add_task(_bg_sync_escalation_matrix)
+        except Exception:
+            pass
+        return row
     result = await db.execute(select(EscalationMatrix).where(EscalationMatrix.id == tier_id))
     tier = result.scalar_one_or_none()
     if not tier:
@@ -44,6 +71,15 @@ async def update_escalation_tier(tier_id: str, data: EscalationMatrixUpdate, bg:
 
 @router.delete("/matrix/{tier_id}")
 async def delete_escalation_tier(tier_id: str, bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_delete
+        if not sheets_delete("EscalationMatrix", tier_id):
+            raise HTTPException(status_code=404, detail="Escalation tier not found")
+        try:
+            bg.add_task(_bg_sync_escalation_matrix)
+        except Exception:
+            pass
+        return {"ok": True}
     result = await db.execute(select(EscalationMatrix).where(EscalationMatrix.id == tier_id))
     tier = result.scalar_one_or_none()
     if not tier:
@@ -56,6 +92,10 @@ async def delete_escalation_tier(tier_id: str, bg: BackgroundTasks, db: AsyncSes
 
 @router.post("/matrix/bulk")
 async def bulk_upsert_escalation_matrix(rows: list[EscalationMatrixCreate], db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_bulk_upsert
+        result = sheets_bulk_upsert("EscalationMatrix", [r.model_dump() for r in rows])
+        return {"ok": True, "upserted": result.get("upserted", 0)}
     upserted = 0
     for data in rows:
         result = await db.execute(select(EscalationMatrix).where(EscalationMatrix.id == data.id))
@@ -80,6 +120,89 @@ def _norm_priorities(p):
 
 async def _resolve_escalation_emails(db: AsyncSession):
     """Core logic: query everything from DB, resolve against matrix, return email groups."""
+    # Sheets-as-DB mode: resolve from Sheets directly
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        now = datetime.now(timezone.utc)
+        tiers = sheets_get_all("EscalationMatrix", use_cache=False)
+        # Filter active
+        tiers = [t for t in tiers if str(t.get("active", "TRUE")).upper() == "TRUE" or t.get("active") is True]
+        users = sheets_get_all("Users", use_cache=True)
+        email_by_name = {}
+        for u in users:
+            if u.get("name") and u.get("email"):
+                email_by_name[u.get("name")] = u.get("email")
+        actions = sheets_get_all("Actions", use_cache=False)
+        # Filter open actions
+        open_actions = [a for a in actions if (a.get("status") not in ["COMPLETED", "DROPPED"]) and a.get("due") and a.get("responsible")]
+        email_groups = {}
+        for action in open_actions:
+            due = action.get("due")
+            if not due:
+                continue
+            try:
+                # due may be string date like "2026-09-17" or datetime
+                if isinstance(due, str):
+                    due_date = datetime.fromisoformat(due).date() if "T" not in due else datetime.fromisoformat(due).date()
+                else:
+                    due_date = due
+                due_dt = datetime.combine(due_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+                hrs_overdue = (now - due_dt).total_seconds() / 3600
+            except (ValueError, TypeError):
+                continue
+            if hrs_overdue < 0:
+                continue
+            resp_names = [n.strip() for n in (action.get("responsible") or "").split(",") if n.strip()]
+            if not resp_names:
+                continue
+            for resp_name in resp_names:
+                for tier in tiers:
+                    if (tier.get("from_user") or "").strip() != resp_name:
+                        continue
+                    try:
+                        overdue_hrs = int(tier.get("overdue_hrs") or 0)
+                    except:
+                        overdue_hrs = 0
+                    if hrs_overdue < overdue_hrs:
+                        continue
+                    tier_priorities = _norm_priorities(tier.get("priorities"))
+                    if (action.get("priority") or "NORMAL") not in tier_priorities:
+                        continue
+                    notify = (tier.get("notify_method") or "").lower()
+                    if "email" not in notify:
+                        continue
+                    target_user = (tier.get("target_user") or "").strip()
+                    if not target_user:
+                        continue
+                    group_key = f"{target_user}::{tier.get('level')}"
+                    if group_key not in email_groups:
+                        email_groups[group_key] = {
+                            "target_user": target_user,
+                            "level": tier.get("level"),
+                            "label": tier.get("label") or "",
+                            "actions": [],
+                        }
+                    email_groups[group_key]["actions"].append({
+                        "sn": action.get("sn"),
+                        "text": action.get("text"),
+                        "due": str(action.get("due")),
+                        "responsible": action.get("responsible") or "",
+                        "priority": action.get("priority") or "NORMAL",
+                    })
+        emails_to_send = []
+        for key, group in email_groups.items():
+            target_user = group["target_user"]
+            recipient_email = email_by_name.get(target_user)
+            if not recipient_email or not group["actions"]:
+                continue
+            emails_to_send.append({
+                "recipients": [recipient_email],
+                "level": group["level"],
+                "target_user": target_user,
+                "actions": group["actions"],
+            })
+        return emails_to_send
+
     now = datetime.now(timezone.utc)
 
     # 1. Load active matrix tiers
@@ -197,6 +320,9 @@ async def email_escalate(bg: BackgroundTasks, db: AsyncSession = Depends(get_db)
 
 
 async def _bg_sync_escalation_matrix():
+    # In Sheets-as-DB mode, data already in Sheets, skip legacy sync
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        return
     try:
         async with async_session() as db:
             result = await db.execute(select(EscalationMatrix))
@@ -219,6 +345,8 @@ async def _bg_sync_escalation_matrix():
 
 
 async def _bg_sync_escalated_actions():
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        return
     try:
         async with async_session() as db:
             now = datetime.now(timezone.utc)

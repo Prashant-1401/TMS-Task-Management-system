@@ -1,3 +1,4 @@
+import os
 import uuid
 import datetime as _dt
 import base64
@@ -164,6 +165,8 @@ async def _check_and_dispatch_escalations_with_db(db):
 
 
 async def _bg_check_escalations():
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        return
     try:
         async with async_session() as db:
             await _check_and_dispatch_escalations_with_db(db)
@@ -178,6 +181,8 @@ async def _bg_check_escalations():
 
 
 async def _sync_action_bg(action_dict: dict):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        return
     try:
         async with async_session() as db:
             names = await _resolve_ids_to_names(db, action_dict.get("plant_id"), action_dict.get("dept_id"), action_dict.get("responsible"))
@@ -204,6 +209,34 @@ async def list_actions(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        rows = sheets_get_all("Actions", use_cache=True)
+        if plant_id:
+            rows = [r for r in rows if r.get("plant_id") == plant_id]
+        if dept_id:
+            rows = [r for r in rows if r.get("dept_id") == dept_id]
+        if status:
+            rows = [r for r in rows if r.get("status") == status]
+        if priority:
+            rows = [r for r in rows if r.get("priority") == priority]
+        if responsible:
+            rows = [r for r in rows if r.get("responsible") == responsible]
+        # Plant scoping for Sheets
+        if current_user and not current_user.get("is_admin"):
+            c_plant_id = current_user.get("plant_id")
+            if c_plant_id:
+                rows = [r for r in rows if r.get("plant_id") == c_plant_id]
+        # Order by created desc
+        try:
+            rows = sorted(rows, key=lambda x: x.get("created") or "", reverse=True)
+        except Exception:
+            pass
+        # Clamp pagination for 300-500 user scale
+        skip = max(0, skip)
+        limit = max(1, min(limit, 500))
+        rows = rows[skip:skip+limit]
+        return rows
     # Clamp pagination for 300-500 user scale
     skip = max(0, skip)
     limit = max(1, min(limit, 500))
@@ -226,6 +259,29 @@ async def list_actions(
 
 @router.post("/send-daily-digests")
 async def send_daily_digests_endpoint(bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        users = sheets_get_all("Users", use_cache=True)
+        email_by_name = {u.get("name"): u.get("email") for u in users if u.get("name") and u.get("email")}
+        actions = sheets_get_all("Actions", use_cache=False)
+        open_actions = [a for a in actions if (a.get("status") not in ["COMPLETED", "DROPPED"])]
+        grouped: dict[str, list] = {}
+        for a in open_actions:
+            for name in [n.strip() for n in (a.get("responsible") or "").split(",") if n.strip()]:
+                grouped.setdefault(name, []).append({
+                    "sn": a.get("sn"), "text": a.get("text"),
+                    "due": str(a.get("due")) if a.get("due") else "",
+                    "status": a.get("status"), "priority": a.get("priority"),
+                })
+        digest_groups = [
+            {"email": email_by_name[name], "name": name, "actions": acts}
+            for name, acts in grouped.items()
+            if name in email_by_name
+        ]
+        if not digest_groups:
+            return {"status": "ok", "queued": 0, "reason": "No users with open actions and an email on file"}
+        bg.add_task(dispatch_daily_digests, digest_groups)
+        return {"status": "ok", "queued": len(digest_groups)}
     users_q = await db.execute(select(User))
     all_users = users_q.scalars().all()
     email_by_name = {u.name: u.email for u in all_users if u.name and u.email}
@@ -259,6 +315,27 @@ async def send_daily_digests_endpoint(bg: BackgroundTasks, db: AsyncSession = De
 
 @router.post("/send-to-email")
 async def send_actions_to_email(data: ActionsEmailReq, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        rows = sheets_get_all("Actions", use_cache=False)
+        actions = [r for r in rows if r.get("responsible") == data.responsible]
+        if data.status:
+            actions = [r for r in actions if r.get("status") == data.status]
+        # Order by created desc
+        try:
+            actions = sorted(actions, key=lambda x: x.get("created") or "", reverse=True)
+        except Exception:
+            pass
+        if not actions:
+            raise HTTPException(status_code=404, detail="No actions found for this person")
+        action_dicts = [
+            {"sn": a.get("sn"), "text": a.get("text"), "due": str(a.get("due")) if a.get("due") else "", "status": a.get("status"), "priority": a.get("priority")}
+            for a in actions
+        ]
+        sent = send_actions_email(data.email, data.responsible, action_dicts)
+        if not sent:
+            raise HTTPException(status_code=500, detail="Failed to send email")
+        return {"ok": True, "count": len(action_dicts)}
     q = select(Action).where(Action.responsible == data.responsible)
     if data.status:
         q = q.where(Action.status == data.status)
@@ -279,6 +356,17 @@ async def send_actions_to_email(data: ActionsEmailReq, db: AsyncSession = Depend
 
 @router.get("/{action_id}")
 async def get_action(action_id: str, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_by_id
+        row = sheets_get_by_id("Actions", action_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Action not found")
+        # Plant scoping
+        if current_user and not current_user.get("is_admin"):
+            c_plant_id = current_user.get("plant_id")
+            if c_plant_id and row.get("plant_id") != c_plant_id:
+                raise HTTPException(status_code=404, detail="Action not found")
+        return row
     q = scope_by_plant(select(Action), current_user, Action.plant_id)
     q = q.where(Action.id == action_id)
     result = await db.execute(q)
@@ -290,6 +378,42 @@ async def get_action(action_id: str, db: AsyncSession = Depends(get_db), current
 
 @router.post("/")
 async def create_action(data: ActionCreate, bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_create, sheets_get_all
+        payload = data.model_dump()
+        payload["id"] = str(uuid.uuid4()) if not payload.get("id") else payload["id"]
+        # Generate SN via Sheets if missing
+        if not payload.get("sn"):
+            try:
+                rows = sheets_get_all("Actions", use_cache=False)
+                max_num = 0
+                for r in rows:
+                    sn = r.get("sn") or ""
+                    if sn.startswith("ACT-"):
+                        try:
+                            num = int(sn.replace("ACT-", ""))
+                            if num > max_num:
+                                max_num = num
+                        except ValueError:
+                            pass
+                payload["sn"] = f"ACT-{max_num + 1:03d}"
+            except Exception:
+                payload["sn"] = f"ACT-{1:03d}"
+        if "project" in payload:
+            payload["project_name"] = payload.pop("project")
+        for k in ("due", "date_of_action", "created", "closed_on"):
+            v = payload.get(k)
+            if isinstance(v, str):
+                try:
+                    # Keep as string for Sheets; if date string, leave as is
+                    # Attempt to validate isoformat but keep string
+                    _dt.date.fromisoformat(v)
+                except (ValueError, TypeError):
+                    pass
+        row = sheets_create("Actions", payload)
+        if not row:
+            raise HTTPException(status_code=400, detail="Failed to create action in Sheets")
+        return row
     payload = data.model_dump()
     payload["id"] = str(uuid.uuid4())
     payload["sn"] = await _generate_sn(db)
@@ -328,6 +452,65 @@ async def create_action(data: ActionCreate, bg: BackgroundTasks, db: AsyncSessio
 async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks, 
                         db: AsyncSession = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_by_id, sheets_update
+        existing = sheets_get_by_id("Actions", action_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Action not found")
+        update_data = data.model_dump(exclude_unset=True)
+        if "project" in update_data:
+            update_data["project_name"] = update_data.pop("project")
+        # Simplified Sheets logic: no complex status transition enforcement, just update
+        # but handle closed_on auto for COMPLETED/DROPPED
+        if update_data.get("status") in ("COMPLETED", "DROPPED") and existing.get("status") not in ("COMPLETED", "DROPPED"):
+            update_data.setdefault("closed_on", str(_dt.date.today()))
+        # Preserve revision_history merge
+        if "revision_history" in update_data:
+            incoming_history = update_data.pop("revision_history")
+            current_history = existing.get("revision_history") or []
+            # Sheets may store as string; try to normalize to list
+            if isinstance(current_history, str):
+                import json
+                try:
+                    current_history = json.loads(current_history)
+                except Exception:
+                    current_history = []
+            if incoming_history and isinstance(incoming_history, list):
+                current_history = current_history + incoming_history
+            update_data["revision_history"] = current_history
+            try:
+                update_data["revisions"] = int(existing.get("revisions") or 0) + 1
+            except Exception:
+                update_data["revisions"] = 1
+        # Preserve attachments merge
+        if "attachments" in update_data:
+            incoming = update_data["attachments"] or []
+            existing_atts = existing.get("attachments") or []
+            if isinstance(existing_atts, str):
+                import json
+                try:
+                    existing_atts = json.loads(existing_atts)
+                except Exception:
+                    existing_atts = []
+            if not isinstance(existing_atts, list):
+                existing_atts = []
+            existing_dict = {a.get("id"): a for a in existing_atts if isinstance(a, dict) and "data" in a}
+            merged = []
+            for att in incoming:
+                if isinstance(att, dict) and att.get("id") in existing_dict and "data" not in att:
+                    merged.append(existing_dict[att["id"]])
+                else:
+                    merged.append(att)
+            update_data["attachments"] = merged
+        # version bump
+        try:
+            update_data["version"] = int(existing.get("version") or 0) + 1
+        except Exception:
+            pass
+        row = sheets_update("Actions", action_id, update_data)
+        if not row:
+            raise HTTPException(status_code=404, detail="Action not found")
+        return row
     result = await db.execute(
         select(Action).where(Action.id == action_id).with_for_update()
     )
@@ -437,6 +620,11 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
 
 @router.delete("/{action_id}")
 async def delete_action(action_id: str, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_delete
+        if not sheets_delete("Actions", action_id):
+            raise HTTPException(status_code=404, detail="Action not found")
+        return {"ok": True}
     result = await db.execute(select(Action).where(Action.id == action_id))
     action = result.scalar_one_or_none()
     if not action:
@@ -448,6 +636,15 @@ async def delete_action(action_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{action_id}/messages")
 async def list_action_messages(action_id: str, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_all
+        rows = sheets_get_all("ActionMessages", use_cache=True)
+        rows = [r for r in rows if str(r.get("action_id")) == str(action_id)]
+        try:
+            rows = sorted(rows, key=lambda x: x.get("ts") or "")
+        except Exception:
+            pass
+        return rows
     result = await db.execute(
         select(ActionMessage).where(ActionMessage.action_id == action_id).order_by(ActionMessage.ts)
     )
@@ -456,6 +653,19 @@ async def list_action_messages(action_id: str, db: AsyncSession = Depends(get_db
 
 @router.post("/{action_id}/messages")
 async def create_action_message(action_id: str, data: ActionMessageCreate, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_create
+        payload = data.model_dump(exclude={"id", "action_id"})
+        # Generate id if not provided; Sheets PK is id
+        new_id = str(uuid.uuid4())
+        # Sheets expects id as string; store with action_id
+        sheets_payload = {"id": new_id, "action_id": action_id, **payload}
+        if not sheets_payload.get("ts"):
+            sheets_payload["ts"] = datetime.now(timezone.utc).isoformat()
+        row = sheets_create("ActionMessages", sheets_payload)
+        if not row:
+            raise HTTPException(status_code=400, detail="Failed to create message in Sheets")
+        return row
     msg = ActionMessage(action_id=action_id, **data.model_dump(exclude={"id", "action_id"}))
     db.add(msg)
     await db.commit()
@@ -465,6 +675,76 @@ async def create_action_message(action_id: str, data: ActionMessageCreate, db: A
 
 @router.post("/{action_id}/attachments")
 async def upload_attachment(action_id: str, file: UploadFile = File(...), bg: BackgroundTasks = None, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_by_id, sheets_update, sheets_get_all
+        row = sheets_get_by_id("Actions", action_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Action not found")
+        content = await file.read()
+        max_bytes = 5 * 1024 * 1024  # 5 MB limit
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=400, detail="File size exceeds 5 MB limit")
+        allowed_mimes = {
+            "application/pdf",
+            "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "text/csv",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        if file.content_type and file.content_type not in allowed_mimes:
+            raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' is not allowed")
+        b64_data = base64.b64encode(content).decode("utf-8")
+        attachment = {
+            "id": str(uuid.uuid4()),
+            "filename": file.filename or "unnamed",
+            "mimetype": file.content_type or "application/octet-stream",
+            "size": len(content),
+            "data": b64_data,
+        }
+        current = row.get("attachments")
+        # Sheets may store attachments as stringified JSON; normalize to list
+        if isinstance(current, str):
+            import json
+            try:
+                current = json.loads(current)
+            except Exception:
+                # Try eval-like fallback
+                current = []
+        if not isinstance(current, list):
+            current = []
+        # Filter out non-dict entries if corrupted
+        current = [a for a in current if isinstance(a, dict)]
+        current.append(attachment)
+        version = row.get("version")
+        update_payload = {"attachments": current}
+        if version is not None:
+            try:
+                update_payload["version"] = int(version) + 1
+            except Exception:
+                pass
+        updated = sheets_update("Actions", action_id, update_payload)
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update attachments in Sheets")
+        # Try to send email notification via Sheets users lookup
+        if bg and row.get("allocated_by"):
+            try:
+                users = sheets_get_all("Users", use_cache=True)
+                allocator_email = None
+                for u in users:
+                    if u.get("name") == row.get("allocated_by"):
+                        allocator_email = u.get("email")
+                        break
+                if allocator_email:
+                    bg.add_task(
+                        send_attachment_email, allocator_email, row.get("sn"), row.get("text"),
+                        row.get("responsible") or "Unknown", file.filename or "unnamed",
+                        b64_data, file.content_type or "application/octet-stream",
+                    )
+            except Exception:
+                pass
+        return {"ok": True, "attachment": {"id": attachment["id"], "filename": attachment["filename"], "mimetype": attachment["mimetype"], "size": attachment["size"]}}
     result = await db.execute(select(Action).where(Action.id == action_id))
     action = result.scalar_one_or_none()
     if not action:
@@ -516,6 +796,30 @@ async def upload_attachment(action_id: str, file: UploadFile = File(...), bg: Ba
 
 @router.delete("/{action_id}/attachments/{attachment_id}")
 async def delete_attachment(action_id: str, attachment_id: str, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_get_by_id, sheets_update
+        row = sheets_get_by_id("Actions", action_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Action not found")
+        current = row.get("attachments") or []
+        if isinstance(current, str):
+            import json
+            try:
+                current = json.loads(current)
+            except Exception:
+                current = []
+        if not isinstance(current, list):
+            current = []
+        current = [a for a in current if isinstance(a, dict) and a.get("id") != attachment_id]
+        version = row.get("version")
+        update_payload = {"attachments": current}
+        if version is not None:
+            try:
+                update_payload["version"] = int(version) + 1
+            except Exception:
+                pass
+        sheets_update("Actions", action_id, update_payload)
+        return {"ok": True}
     result = await db.execute(select(Action).where(Action.id == action_id))
     action = result.scalar_one_or_none()
     if not action:
@@ -529,6 +833,40 @@ async def delete_attachment(action_id: str, attachment_id: str, db: AsyncSession
 
 @router.post("/bulk")
 async def bulk_upsert_actions(rows: list[ActionCreate], bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        from app.services.sheets_db_service import sheets_bulk_upsert, sheets_get_all
+        # Prepare sheets rows with SN generation for missing sn
+        existing_rows = sheets_get_all("Actions", use_cache=False)
+        max_num = 0
+        for r in existing_rows:
+            sn = r.get("sn") or ""
+            if sn.startswith("ACT-"):
+                try:
+                    num = int(sn.replace("ACT-", ""))
+                    if num > max_num:
+                        max_num = num
+                except ValueError:
+                    pass
+        sheets_rows = []
+        for data in rows:
+            payload = data.model_dump()
+            if "project" in payload:
+                payload["project_name"] = payload.pop("project")
+            for k in ("due", "date_of_action", "created", "closed_on"):
+                v = payload.get(k)
+                if isinstance(v, str):
+                    try:
+                        _dt.date.fromisoformat(v)
+                    except (ValueError, TypeError):
+                        pass
+            if not payload.get("id"):
+                payload["id"] = str(uuid.uuid4())
+            if not payload.get("sn"):
+                max_num += 1
+                payload["sn"] = f"ACT-{max_num:03d}"
+            sheets_rows.append(payload)
+        result = sheets_bulk_upsert("Actions", sheets_rows)
+        return {"ok": True, "upserted": result.get("upserted", 0)}
     upserted = 0
     for data in rows:
         payload = data.model_dump()
@@ -591,6 +929,9 @@ async def bulk_upsert_actions(rows: list[ActionCreate], bg: BackgroundTasks, db:
 
 @router.post("/sync-to-sheet")
 async def sync_actions_to_sheet(db: AsyncSession = Depends(get_db)):
+    if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
+        # In Sheets-as-DB mode, data already in Sheets
+        return {"ok": True, "synced": 0, "note": "Sheets is primary DB, sync not needed"}
     result = await db.execute(select(Action).order_by(Action.created.desc()))
     actions = result.scalars().all()
     action_dicts = []
