@@ -9,9 +9,8 @@ services:
     runtime: python
     region: singapore   # closest to India for 100 users; or oregon/us-east for US
     plan: starter       # ₹595/mo, Always-on, 1GB, 4 workers — handles 100 users; use standard ₹2125 for 300-500
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w 4 --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w 4 --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5 --chdir backend
     healthCheckPath: /api/health
     autoDeploy: true    # deploys on git push main
     envVars:
