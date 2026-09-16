@@ -199,9 +199,14 @@ async def list_actions(
     status: str = None,
     priority: str = None,
     responsible: str = None,
+    skip: int = 0,
+    limit: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    # Clamp pagination for 300-500 user scale
+    skip = max(0, skip)
+    limit = max(1, min(limit, 500))
     q = select(Action)
     if plant_id:
         q = q.where(Action.plant_id == plant_id)
@@ -214,7 +219,7 @@ async def list_actions(
     if responsible:
         q = q.where(Action.responsible == responsible)
     q = scope_by_plant(q, current_user, Action.plant_id)
-    q = q.order_by(Action.created.desc())
+    q = q.order_by(Action.created.desc()).offset(skip).limit(limit)
     result = await db.execute(q)
     return result.scalars().all()
 

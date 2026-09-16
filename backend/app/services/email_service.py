@@ -76,7 +76,7 @@ def dispatch_escalation_emails(email_groups: List[Dict[str, Any]]) -> bool:
             continue
 
         safe_target = html_escape(str(target_user))
-        subject = f"MCS Escalation Level {level} — Action Items Requiring Your Attention"
+        subject = f"TMS Escalation Level {level} — Action Items Requiring Your Attention"
         body = f"<h2>Escalation Level {level} — Assigned to {safe_target}</h2><p>The following actions are overdue and escalated to you:</p><ul>"
         for a in fresh:
             sn = html_escape(str(a.get("sn", "")))
@@ -97,10 +97,10 @@ def send_welcome_email(name: str, username: str, email: str,
                        password: str = "", superior: str = "", phone: str = "") -> bool:
     safe_name = html_escape(str(name))
     safe_user = html_escape(str(username))
-    subject = f"Welcome to MCS — Your Account is Ready"
+    subject = f"Welcome to TMS — Your Account is Ready"
     body = (
         f"<h2>Welcome, {safe_name}!</h2>"
-        f"<p>Your MCS account has been created.</p>"
+        f"<p>Your TMS account has been created.</p>"
         f"<p><b>Username:</b> {safe_user}</p>"
     )
     if password:
@@ -109,13 +109,13 @@ def send_welcome_email(name: str, username: str, email: str,
         body += f"<p><b>Reports To:</b> {html_escape(superior)}</p>"
     if phone:
         body += f"<p><b>Phone:</b> {html_escape(phone)}</p>"
-    body += f"<p><a href='{settings.frontend_url}'>Login to MCS</a></p>"
+    body += f"<p><a href='{settings.frontend_url}'>Login to TMS</a></p>"
     return send_email([email], subject, body)
 
 
 def send_actions_email(to_email: str, responsible: str, actions: List[Dict[str, Any]]) -> bool:
     safe_name = html_escape(str(responsible))
-    subject = f"MCS — All Actions for {safe_name}"
+    subject = f"TMS — All Actions for {safe_name}"
     rows = ""
     for a in actions:
         sn = html_escape(str(a.get("sn", "")))
@@ -164,7 +164,7 @@ def dispatch_daily_digests(digest_groups: List[Dict[str, Any]]) -> bool:
         if not email or not actions:
             continue
         safe_name = html_escape(str(name))
-        subject = f"MCS Daily Digest — {len(actions)} Open Action(s) for {safe_name}"
+        subject = f"TMS Daily Digest — {len(actions)} Open Action(s) for {safe_name}"
         rows = ""
         for a in actions:
             sn = html_escape(str(a.get("sn", "")))
@@ -193,7 +193,7 @@ def dispatch_daily_digests(digest_groups: List[Dict[str, Any]]) -> bool:
             f"<th style='padding:6px 10px;border:1px solid #ddd;background:#f4f4f4'>Priority</th>"
             f"</tr></thead>"
             f"<tbody>{rows}</tbody></table>"
-            f"<p style='margin-top:12px'><a href='{settings.frontend_url}'>Open MCS</a></p>"
+            f"<p style='margin-top:12px'><a href='{settings.frontend_url}'>Open TMS</a></p>"
         )
         if send_email([email], subject, body):
             any_sent = True
@@ -203,7 +203,7 @@ def dispatch_daily_digests(digest_groups: List[Dict[str, Any]]) -> bool:
 def share_insights_email(to_emails: List[str], subject: str, content: str, plant: str = "") -> bool:
     safe_content = html_escape(str(content))
     safe_plant = html_escape(str(plant))
-    html_body = f"<h2>MCS Insights Share</h2>"
+    html_body = f"<h2>TMS Insights Share</h2>"
     if safe_plant:
         html_body += f"<p><b>Plant:</b> {safe_plant}</p>"
     html_body += f"<pre style='white-space:pre-wrap;font-family:sans-serif'>{safe_content}</pre>"
@@ -216,7 +216,7 @@ def send_completion_request_email(to_email: str, action_sn: str, action_text: st
     safe_sn = html_escape(str(action_sn))
     safe_text = html_escape(str(action_text))
     safe_resp = html_escape(str(responsible))
-    subject = f"MCS — Action {safe_sn} Pending Your Confirmation"
+    subject = f"TMS — Action {safe_sn} Pending Your Confirmation"
     body = (
         f"<h2>Action Completion Request</h2>"
         f"<p><b>{safe_resp}</b> has marked action <b>{safe_sn}</b> as complete and is requesting your confirmation.</p>"
@@ -237,7 +237,7 @@ def send_completion_confirmed_email(to_email: str, action_sn: str, action_text: 
     safe_sn = html_escape(str(action_sn))
     safe_text = html_escape(str(action_text))
     safe_by = html_escape(str(confirmed_by))
-    subject = f"MCS — Action {safe_sn} Completed"
+    subject = f"TMS — Action {safe_sn} Completed"
     body = (
         f"<h2>Action Completed</h2>"
         f"<p>Your action <b>{safe_sn}</b> has been confirmed as complete by <b>{safe_by}</b>.</p>"
@@ -246,7 +246,7 @@ def send_completion_confirmed_email(to_email: str, action_sn: str, action_text: 
         f"<tr><td style='padding:8px;font-weight:700;color:#555;'>Description</td><td style='padding:8px;'>{safe_text}</td></tr>"
         f"<tr><td style='padding:8px;font-weight:700;color:#555;'>Confirmed By</td><td style='padding:8px;'>{safe_by}</td></tr>"
         f"</table>"
-        f"<p><a href='{settings.frontend_url}' style='display:inline-block;background:#27AE60;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;'>Open MCS</a></p>"
+        f"<p><a href='{settings.frontend_url}' style='display:inline-block;background:#27AE60;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;'>Open TMS</a></p>"
     )
     return send_email([to_email], subject, body)
 
@@ -257,7 +257,7 @@ def send_completion_rejected_email(to_email: str, action_sn: str, action_text: s
     safe_sn = html_escape(str(action_sn))
     safe_text = html_escape(str(action_text))
     safe_by = html_escape(str(rejected_by))
-    subject = f"MCS — Action {safe_sn} Reopened"
+    subject = f"TMS — Action {safe_sn} Reopened"
     body = (
         f"<h2>Action Reopened</h2>"
         f"<p>Your completion request for action <b>{safe_sn}</b> has been rejected by <b>{safe_by}</b>.</p>"
@@ -267,7 +267,7 @@ def send_completion_rejected_email(to_email: str, action_sn: str, action_text: s
         f"<tr><td style='padding:8px;font-weight:700;color:#555;'>Description</td><td style='padding:8px;'>{safe_text}</td></tr>"
         f"<tr><td style='padding:8px;font-weight:700;color:#555;'>Rejected By</td><td style='padding:8px;'>{safe_by}</td></tr>"
         f"</table>"
-        f"<p><a href='{settings.frontend_url}' style='display:inline-block;background:#E74C3C;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;'>Open MCS</a></p>"
+        f"<p><a href='{settings.frontend_url}' style='display:inline-block;background:#E74C3C;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;'>Open TMS</a></p>"
     )
     return send_email([to_email], subject, body)
 
@@ -280,7 +280,7 @@ def send_attachment_email(to_email: str, action_sn: str, action_text: str,
     safe_text = html_escape(str(action_text))
     safe_by = html_escape(str(uploaded_by))
     safe_fn = html_escape(str(filename))
-    subject = f"MCS — Document Attached to Action {safe_sn}"
+    subject = f"TMS — Document Attached to Action {safe_sn}"
     body = (
         f"<h2>Document Attached to Action</h2>"
         f"<p><b>{safe_by}</b> has attached a document to action <b>{safe_sn}</b>.</p>"
@@ -291,7 +291,7 @@ def send_attachment_email(to_email: str, action_sn: str, action_text: str,
         f"<tr><td style='padding:8px;font-weight:700;color:#555;'>Attached By</td><td style='padding:8px;'>{safe_by}</td></tr>"
         f"</table>"
         f"<p>The document is attached to this email.</p>"
-        f"<p><a href='{settings.frontend_url}' style='display:inline-block;background:#1a237e;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;'>Open MCS</a></p>"
+        f"<p><a href='{settings.frontend_url}' style='display:inline-block;background:#1a237e;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;'>Open TMS</a></p>"
     )
     if not settings.smtp_user or not settings.smtp_password:
         print(f"SMTP not configured — attachment email NOT sent. TO: {to_email} SUBJECT: {subject}")

@@ -1,4 +1,4 @@
-"""Set all user passwords to MCS2026 and send welcome emails with credentials."""
+"""Set all user passwords to TMS2026 and send welcome emails with credentials."""
 
 import sys
 import os
@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-FIXED_PASSWORD = "MCS2026"
+FIXED_PASSWORD = "TMS2026"
 
 
 def hash_password(password: str) -> str:
@@ -23,30 +23,30 @@ def send_welcome_email(to_email, name, username, password):
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER", "")
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip('"')
-    frontend_url = os.getenv("FRONTEND_URL", "https://mcs-control-management.vercel.app")
+    frontend_url = os.getenv("FRONTEND_URL", "https://tms-control-management.vercel.app")
 
     msg = EmailMessage()
-    msg["Subject"] = "Welcome to MCS — Your Account Credentials"
+    msg["Subject"] = "Welcome to TMS — Your Account Credentials"
     msg["From"] = smtp_user
     msg["To"] = to_email
 
     html = f"""
     <html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
     <div style="background:#1a237e;color:#fff;padding:20px;text-align:center;">
-        <h1 style="margin:0;">MCS — Management Control System</h1>
+        <h1 style="margin:0;">TMS — Task Management System</h1>
     </div>
     <div style="padding:30px;background:#f5f5f5;">
         <h2 style="color:#1a237e;">Welcome, {name}!</h2>
-        <p>Your MCS account has been created. Here are your login credentials:</p>
+        <p>Your TMS account has been created. Here are your login credentials:</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
             <tr><td style="padding:8px;font-weight:700;color:#555;">Username</td><td style="padding:8px;font-size:16px;">{username}</td></tr>
             <tr><td style="padding:8px;font-weight:700;color:#555;">Password</td><td style="padding:8px;font-size:16px;font-family:monospace;background:#fff;border:1px solid #ddd;">{password}</td></tr>
         </table>
         <p style="color:#e65100;font-weight:600;">Please change your password after first login.</p>
-        <p><a href="{frontend_url}" style="display:inline-block;background:#1a237e;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;">Login to MCS</a></p>
+        <p><a href="{frontend_url}" style="display:inline-block;background:#1a237e;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;">Login to TMS</a></p>
     </div>
     <div style="text-align:center;padding:10px;color:#888;font-size:11px;">
-        <p>This is an automated email from MCS. Do not share these credentials.</p>
+        <p>This is an automated email from TMS. Do not share these credentials.</p>
     </div>
     </body></html>"""
     msg.add_alternative(html, subtype="html")
@@ -82,7 +82,7 @@ def main():
     hashed = hash_password(FIXED_PASSWORD)
 
     print(f"{'='*60}")
-    print(f"  MCS Password Reset & Welcome Email")
+    print(f"  TMS Password Reset & Welcome Email")
     print(f"  Password: {FIXED_PASSWORD}")
     print(f"  {len(users)} user(s) to process")
     print(f"{'='*60}\n")

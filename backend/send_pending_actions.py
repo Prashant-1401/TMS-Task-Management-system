@@ -15,7 +15,7 @@ def send_actions_email(to_email, name, actions):
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER", "")
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip('"')
-    frontend_url = os.getenv("FRONTEND_URL", "https://mcs-control-management.vercel.app")
+    frontend_url = os.getenv("FRONTEND_URL", "https://tms-control-management.vercel.app")
 
     rows = ""
     for a in actions:
@@ -37,7 +37,7 @@ def send_actions_email(to_email, name, actions):
     html = f"""
     <html><body style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
     <div style="background:#1a237e;color:#fff;padding:20px;text-align:center;">
-        <h1 style="margin:0;">MCS — Pending Actions</h1>
+        <h1 style="margin:0;">TMS — Pending Actions</h1>
     </div>
     <div style="padding:30px;background:#f5f5f5;">
         <h2 style="color:#1a237e;">Hello, {name}!</h2>
@@ -52,15 +52,15 @@ def send_actions_email(to_email, name, actions):
             </tr></thead>
             <tbody>{rows}</tbody>
         </table>
-        <p><a href="{frontend_url}" style="display:inline-block;background:#1a237e;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;">Open MCS</a></p>
+        <p><a href="{frontend_url}" style="display:inline-block;background:#1a237e;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;">Open TMS</a></p>
     </div>
     <div style="text-align:center;padding:10px;color:#888;font-size:11px;">
-        <p>This is an automated email from MCS.</p>
+        <p>This is an automated email from TMS.</p>
     </div>
     </body></html>"""
 
     msg = EmailMessage()
-    msg["Subject"] = f"MCS — {len(actions)} Pending Action(s) for {name}"
+    msg["Subject"] = f"TMS — {len(actions)} Pending Action(s) for {name}"
     msg["From"] = smtp_user
     msg["To"] = to_email
     msg.set_content("Please enable HTML viewing.")
@@ -98,7 +98,7 @@ def main():
     rows = cur.fetchall()
 
     print(f"{'='*60}")
-    print(f"  MCS Pending Action Email Sender")
+    print(f"  TMS Pending Action Email Sender")
     print(f"  {len(rows)} action(s) found across users")
     print(f"{'='*60}\n")
 

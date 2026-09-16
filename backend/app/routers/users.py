@@ -52,8 +52,15 @@ def _safe_user(user: User) -> UserResponse:
 
 
 @router.get("/")
-async def list_users(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    q = scope_by_plant(select(User), current_user, User.plant_id)
+async def list_users(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    skip = max(0, skip)
+    limit = max(1, min(limit, 500))
+    q = scope_by_plant(select(User), current_user, User.plant_id).offset(skip).limit(limit)
     result = await db.execute(q)
     users = result.scalars().all()
     return [_safe_user(u) for u in users]

@@ -34,3 +34,5 @@ ui-debug.log
 .cost_tmp/
 # One-off exports
 *.pdf
+.~lock.*#
+.*.lock*

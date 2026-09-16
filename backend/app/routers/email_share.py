@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/email", tags=["Email"])
 def _bg_share_insights(insights, meeting_type, plant, recipients, phones):
     import json
     content = json.dumps(insights, indent=2) if isinstance(insights, (list, dict)) else str(insights)
-    subject = f"MCS Insights — {meeting_type} ({plant})"
+    subject = f"TMS Insights — {meeting_type} ({plant})"
     share_insights_email(to_emails=recipients, subject=subject, content=content, plant=plant)
     share_insights_whatsapp(insights, meeting_type, plant, phones)
 

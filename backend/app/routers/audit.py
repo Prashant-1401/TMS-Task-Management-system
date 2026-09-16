@@ -11,8 +11,14 @@ router = APIRouter(prefix="/api/audit", tags=["Audit"], dependencies=[Depends(re
 
 
 @router.get("/")
-async def list_audit(limit: int = 100, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Audit).order_by(Audit.ts.desc()).limit(limit))
+async def list_audit(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    skip = max(0, skip)
+    limit = max(1, min(limit, 500))
+    result = await db.execute(select(Audit).order_by(Audit.ts.desc()).offset(skip).limit(limit))
     return result.scalars().all()
 
 

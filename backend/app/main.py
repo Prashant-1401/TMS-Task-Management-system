@@ -236,8 +236,8 @@ def migrate_schema(conn):
 
 
 app = FastAPI(
-    title="MCS Backend API",
-    description="Management Control System — Backend API",
+    title="TMS Backend API",
+    description="Task Management System — Backend API",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -247,6 +247,8 @@ if not origins:
     origins = ["*"]
 else:
     known = [
+        "https://tms-control-management.vercel.app",
+        "https://tms-control-management-g9uaoyxl1.vercel.app",
         "https://mcs-control-management.vercel.app",
         "https://mcs-control-management-g9uaoyxl1.vercel.app",
         "http://localhost:5173",
@@ -281,7 +283,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def root():
-    return {"message": "MCS Backend API is running", "docs": "/docs", "health": "/api/health"}
+    return {"message": "TMS Backend API is running", "docs": "/docs", "health": "/api/health"}
 
 
 @app.get("/api/health")

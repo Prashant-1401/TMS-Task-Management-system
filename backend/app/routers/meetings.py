@@ -72,12 +72,20 @@ async def delete_meeting_preset(preset_type: str, db: AsyncSession = Depends(get
 # ── Meetings ──
 
 @router.get("/")
-async def list_meetings(plant_id: str = None, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def list_meetings(
+    plant_id: str = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    skip = max(0, skip)
+    limit = max(1, min(limit, 500))
     q = select(Meeting)
     if plant_id:
         q = q.where(Meeting.plant_id == plant_id)
     q = scope_by_plant(q, current_user, Meeting.plant_id)
-    q = q.order_by(Meeting.date.desc())
+    q = q.order_by(Meeting.date.desc()).offset(skip).limit(limit)
     result = await db.execute(q)
     return result.scalars().all()
 

@@ -68,7 +68,7 @@ def load_xlsx(path):
 
 
 async def main():
-    entries = load_xlsx("/home/prashant/MCS ACTION IS/DB/escalation_matrix.xlsx")
+    entries = load_xlsx("/home/prashant/TMS ACTION IS/DB/escalation_matrix.xlsx")
     print(f"Loaded {len(entries)} escalation entries from xlsx")
 
     async with async_session() as db:

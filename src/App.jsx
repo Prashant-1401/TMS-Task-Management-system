@@ -1124,7 +1124,7 @@ function LoginPage({ onLogin }) {
               <div style={{ fontSize: 9, color: T.text2, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" }}>Industries</div>
             </div>
           </div>
-          <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 18, color: T.navy, lineHeight: 1.2 }}>Management Control System</div>
+          <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 18, color: T.navy, lineHeight: 1.2 }}>Task Management System</div>
           <div style={{ fontSize: 11, color: T.text2, marginTop: 6 }}>Decentralized Work Management Platform</div>
         </div>
         <div style={{ marginBottom: 14 }}><Lbl t="Username" req /><input value={u} onChange={e => setU(e.target.value)} placeholder="Enter your username" onKeyDown={e => e.key === "Enter" && tryLogin()} /></div>
@@ -1617,10 +1617,10 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
       <aside className={`app-sidebar${mobileMenuOpen ? " open" : ""}`} style={{ width: 228, background: T.navy, color: "#fff", display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
         <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: T.amber, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>MCS</div>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: T.amber, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>TMS</div>
             <div>
-              <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 11, lineHeight: 1.1 }}>Management Control System</div>
-              <div style={{ fontSize: 9, color: T.amber, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 2, fontWeight: 700 }}>Actions</div>
+              <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 11, lineHeight: 1.1 }}>Task Management System</div>
+              <div style={{ fontSize: 9, color: T.amber, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 2, fontWeight: 700 }}>Tasks</div>
             </div>
           </div>
         </div>
@@ -1708,7 +1708,7 @@ function Shell({ children, page, setPage, user, onLogout, onQuickAdd, pendingCou
         {/* Mobile top bar */}
         <div style={{ display: "none", padding: "10px 16px", background: T.navy, color: "#fff", alignItems: "center", gap: 12 }} className="mbl-topbar">
           <button className="mbl-menu-btn" onClick={() => setMobileMenuOpen(p => !p)} style={{ display: "flex" }}>☰</button>
-          <div style={{ flex: 1, fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 14, color: "#fff" }}>MCS Actions</div>
+          <div style={{ flex: 1, fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 14, color: "#fff" }}>TMS Tasks</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {userPerms.canEditActions && <button className="fab" style={{ position: "static", width: 36, height: 36, fontSize: 20 }} onClick={onQuickAdd} title="Quick add action">+</button>}
           </div>
@@ -1995,7 +1995,7 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
     <div className="fade-in">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 12, color: T.text2, marginBottom: 4 }}>Home › Management Control System</div>
+          <div style={{ fontSize: 12, color: T.text2, marginBottom: 4 }}>Home › Task Management System</div>
           <h1 style={{ fontFamily: "'Sora',sans-serif", fontSize: 22, fontWeight: 800, color: T.navy }}>Good {greeting}, {user && user.name ? user.name.split(" ")[0] : ""} 👋</h1>
           <div style={{ fontSize: 12, color: T.text2, marginTop: 3 }}>{now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
         </div>
@@ -4887,7 +4887,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
         tr:nth-child(even) td{background:#F5F5FB;}
         .status-badge{padding:2px 8px;border-radius:10px;font-weight:600;}
       </style></head><body>
-      <h2>Management Control System — Actions Register</h2>
+      <h2>Task Management System — Tasks Register</h2>
       <p>Exported on ${new Date().toLocaleDateString("en-IN")} · ${fa.length} actions</p>
       <table>
         <tr><th>SN</th><th>Action</th><th>Responsible</th><th>Due Date</th><th>Status</th><th>Priority</th><th>Plant</th><th>Meeting</th></tr>
@@ -6945,26 +6945,26 @@ function MasterPage({ user, plants, setPlants, depts, setDepts, users, setUsers,
 
 /* ===================== API BRIDGE ===================== */
 /* Minimal REST-like API bridge — exposes actions data via a global object
-   that external apps can read/write via postMessage or window.MCS_API.
+   that external apps can read/write via postMessage or window.TMS_API (legacy window.MCS_API kept).
    Usage:
-     window.MCS_API.getActions()         → all current actions
-     window.MCS_API.getAction(id)        → specific action
-     window.MCS_API.updateAction(id, patch) → update an action
-     window.MCS_API.addAction(action)    → add a new action
-   
-   Via postMessage (iframe integration):
-     window.postMessage({type:"MCS_GET_ACTIONS"},"*")
-     → response: {type:"MCS_ACTIONS_RESULT",data:[...]}
-   
-   This satisfies requirement #6 — API/MCP integration option.
+     window.TMS_API.getActions()         → all current actions
+     window.TMS_API.getAction(id)        → specific action
+     window.TMS_API.updateAction(id, patch) → update an action
+     window.TMS_API.addAction(action)    → add a new action
+    
+    Via postMessage (iframe integration):
+      window.postMessage({type:"TMS_GET_ACTIONS"},"*")  // legacy MCS_GET_ACTIONS also supported
+      → response: {type:"TMS_ACTIONS_RESULT",data:[...]}
+    
+    This satisfies requirement #6 — API/MCP integration option.
 */
 function useAPIBridge(actions, setActions, projects, plants, depts, machines) {
   const actionsRef = useRef(actions);
   useEffect(() => { actionsRef.current = actions; }, [actions]);
 
   useEffect(() => {
-    // Expose global API
-          window.MCS_API = {
+    // Expose global API (TMS primary, MCS legacy)
+          window.TMS_API = window.MCS_API = {
             version: "1.0.0",
             getActions: () => actionsRef.current,
             getAction: (id) => actionsRef.current.find(a => a.id === id || a.sn === id),
@@ -6985,19 +6985,26 @@ function useAPIBridge(actions, setActions, projects, plants, depts, machines) {
     const handler = (e) => {
       if (!e.data || typeof e.data !== "object") return;
       switch (e.data.type) {
+        case "TMS_GET_ACTIONS":
         case "MCS_GET_ACTIONS":
+          e.source?.postMessage({ type: "TMS_ACTIONS_RESULT", data: actionsRef.current, ok: true }, "*");
           e.source?.postMessage({ type: "MCS_ACTIONS_RESULT", data: actionsRef.current, ok: true }, "*");
           break;
+        case "TMS_GET_ACTION":
         case "MCS_GET_ACTION":
+          e.source?.postMessage({ type: "TMS_ACTION_RESULT", data: actionsRef.current.find(a => a.id === e.data.id), ok: true }, "*");
           e.source?.postMessage({ type: "MCS_ACTION_RESULT", data: actionsRef.current.find(a => a.id === e.data.id), ok: true }, "*");
           break;
+        case "TMS_UPDATE_ACTION":
         case "MCS_UPDATE_ACTION":
           setActions(p => p.map(a => a.id === e.data.id ? { ...a, ...e.data.patch } : a));
           apiUpdate("actions", e.data.id, e.data.patch).catch(err => {
             setActions(p => p.map(a => a.id === e.data.id ? { ...a } : a));
           });
+          e.source?.postMessage({ type: "TMS_UPDATE_OK", id: e.data.id, ok: true }, "*");
           e.source?.postMessage({ type: "MCS_UPDATE_OK", id: e.data.id, ok: true }, "*");
           break;
+        case "TMS_ADD_ACTION":
         case "MCS_ADD_ACTION": {
           const localId = String(Date.now());
           const newA = { ...e.data.action, id: localId, created: todayStr(), revisionHistory: [], messages: [], pendingConfirmation: false };
@@ -7006,17 +7013,20 @@ function useAPIBridge(actions, setActions, projects, plants, depts, machines) {
           apiCreate("actions", resolved).then(saved => {
             if (saved && saved.id) setActions(p => p.map(x => x.id === localId ? { ...x, id: saved.id, sn: saved.sn || x.sn } : x));
           }).catch(() => { setActions(p => p.filter(x => x.id !== localId)); });
+          e.source?.postMessage({ type: "TMS_ADD_OK", action: resolved, ok: true }, "*");
           e.source?.postMessage({ type: "MCS_ADD_OK", action: resolved, ok: true }, "*");
           break;
         }
+        case "TMS_GET_PROJECTS":
         case "MCS_GET_PROJECTS":
+          e.source?.postMessage({ type: "TMS_PROJECTS_RESULT", data: projects, ok: true }, "*");
           e.source?.postMessage({ type: "MCS_PROJECTS_RESULT", data: projects, ok: true }, "*");
           break;
         default: break;
       }
     };
     window.addEventListener("message", handler);
-    return () => { window.removeEventListener("message", handler); delete window.MCS_API; };
+    return () => { window.removeEventListener("message", handler); delete window.MCS_API; delete window.TMS_API; };
   }, [setActions, projects, plants, depts, machines]);
 }
 
@@ -7025,7 +7035,7 @@ class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error) { return { hasError: true, error }; }
   componentDidCatch(error, errorInfo) {
-    console.error("[MCS ErrorBoundary] CRASH:", error?.message, "\nStack:", error?.stack, "\nComponent Stack:", errorInfo?.componentStack);
+    console.error("[TMS ErrorBoundary] CRASH:", error?.message, "\nStack:", error?.stack, "\nComponent Stack:", errorInfo?.componentStack);
   }
   render() {
     if (this.state.hasError) {
@@ -7357,7 +7367,7 @@ export default function App() {
     <ErrorBoundary>
       <style>{CSS}</style>
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg,${T.navy} 0%,#3D378C 100%)`, gap: 16 }}>
-        <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 22, color: "#fff" }}>Management Control System</div>
+        <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 22, color: "#fff" }}>Task Management System</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,.7)", fontSize: 13 }}>
           <span style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,.5)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
           Loading data from server…

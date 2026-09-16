@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     admin_email: str = "admin@adroit.in"
     team_email: str = "team@adroit.in"
     wacrm_alert_url: str = ""
-    frontend_url: str = "https://mcs-control-management.vercel.app"
+    frontend_url: str = "https://tms-control-management.vercel.app"
     master_user: str = ""
     master_password: str = ""
     google_sheets_credentials_path: str = ""
