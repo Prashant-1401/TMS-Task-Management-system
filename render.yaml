@@ -1,0 +1,98 @@
+# Render Blueprint — TMS Task Management System (100 users, hardened)
+# Docs: https://render.com/docs/blueprint-spec
+# One-click deploy: Push this file to GitHub → Render Dashboard → New → Blueprint → Connect Prashant702/TMS-Task-Mangement-system
+
+services:
+  # ── Backend — FastAPI + asyncpg + 4 workers (pool 20/30, pagination) ──
+  - type: web
+    name: tms-backend
+    runtime: python
+    region: singapore   # closest to India for 100 users; or oregon/us-east for US
+    plan: starter       # ₹595/mo, Always-on, 1GB, 4 workers — handles 100 users; use standard ₹2125 for 300-500
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w 4 --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5
+    healthCheckPath: /api/health
+    autoDeploy: true    # deploys on git push main
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DATABASE_URL
+        # Neon pooled URL (asyncpg) — keep ?sslmode=require, or use Render Postgres internal URL after creation
+        fromDatabase:
+          name: tms-db
+          property: connectionString
+        # For Neon: paste manually in Dashboard → Environment → DATABASE_URL = postgresql+asyncpg://neondb_owner:...@ep-...-pooler.neon.tech/neondb?sslmode=require
+      - key: SECRET_KEY
+        generateValue: true   # openssl rand -hex 32 — override with your own for JWT stability
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXPIRE_MINUTES
+        value: 480
+      - key: API_KEY
+        generateValue: true   # must match frontend VITE_API_KEY — set both to same value e.g. 0114cccb4238d3faa118e312dbe75abe
+      - key: ALLOWED_ORIGINS
+        value: https://tms-control-management.vercel.app,http://localhost:5173
+        # After frontend deploys, add its URL here: https://tms-frontend.onrender.com,https://tms.yourdomain.com
+      - key: FRONTEND_URL
+        value: https://tms-frontend.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false           # set in Dashboard — from https://aistudio.google.com
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false           # e.g. tmsadmincontrol@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false           # Gmail App Password 16 chars, quoted
+      - key: MASTER_USER
+        value: master
+      - key: MASTER_PASSWORD
+        sync: false           # e.g. adroit@master2025 — change!
+
+  # ── Frontend — Vite React 19 (Static Site) ──
+  - type: web
+    name: tms-frontend
+    runtime: static           # Render Static Site (or use type: web with node for SSR — static is cheaper for Vite SPA)
+    region: singapore
+    plan: free                # Static is free (100GB BW) — use starter $7 for custom domain SSL if needed
+    rootDir: .
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    # SPA rewrites — all routes to index.html
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    # Cache headers for chunks (hardened vite.config.js manualChunks)
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    envVars:
+      - key: VITE_API_BASE_URL
+        # After backend deploys, set to its URL: https://tms-backend.onrender.com
+        # For local testing: http://localhost:8000
+        # For Render backend: use fromService below (uncomment if using Render service discovery)
+        # fromService:
+        #   name: tms-backend
+        #   property: host
+        value: https://tms-backend.onrender.com
+      - key: VITE_API_KEY
+        # must == backend API_KEY
+        sync: false
+
+# ── Database — Render Postgres (alternative to Neon) ──
+# If you use Neon (current .env), you can DELETE this block and set DATABASE_URL manually.
+# If you want fully on Render (₹7/mo, no external Neon), keep it — Render will provision Postgres 16.
+databases:
+  - name: tms-db
+    plan: starter             # ₹850/mo 1GB, 97 conn — for 100 users use starter; free 256MB for trial 50 users
+    databaseName: tmsdb
+    user: tms
+    region: singapore
+    # connectionString auto-injected as postgresql://tms:...@host/tmsdb (sync URL, not asyncpg)
+    # For FastAPI asyncpg, change to postgresql+asyncpg:// in backend env after creation
