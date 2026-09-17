@@ -44,6 +44,28 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
     return {"token": token, "user": user_data}
 
 
+@router.post("/master-login")
+async def master_login(req: LoginRequest):
+    if not settings.master_user or not settings.master_password:
+        raise HTTPException(status_code=403, detail="Master login not configured")
+    if req.username.strip().lower() != settings.master_user.lower() or req.password != settings.master_password:
+        raise HTTPException(status_code=401, detail="Invalid master credentials")
+    token = create_token({"sub": "master", "role": "Admin", "id": "MASTER"})
+    user_data = {
+        "id": "MASTER",
+        "name": "Master Admin",
+        "username": "master",
+        "role": "Admin",
+        "plant": "All",
+        "dept": "Management",
+        "initials": "MA",
+        "color": "#272262",
+        "isMaster": True,
+        "masterAccess": True,
+    }
+    return {"token": token, "user": user_data}
+
+
 @router.post("/logout")
 async def logout(request: Request):
     auth = request.headers.get("authorization", "")
