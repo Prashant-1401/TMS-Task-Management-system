@@ -310,6 +310,7 @@ async def health():
         "sheets_configured": sheets.get("configured", False),
         "sheets_as_db": sheets.get("enabled_as_db", False),
         "sheets_count": sheets.get("sheets", 0),
+        "sheets_error": sheets.get("error"),
     }
 
 
