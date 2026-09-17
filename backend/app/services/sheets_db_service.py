@@ -316,6 +316,14 @@ def sheets_health() -> Dict[str, Any]:
         return {"configured": False, "sheets": 0, "error": "Not configured"}
     try:
         client = _get_client()
+        if client is None:
+            from app.services import google_sheets_service as _gss
+            return {
+                "configured": True,
+                "sheets": 0,
+                "enabled_as_db": _is_sheets_db_enabled(),
+                "error": _gss._LAST_ERROR or "Google Sheets client unavailable",
+            }
         sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
         worksheets = sh.worksheets()
         return {
@@ -326,4 +334,4 @@ def sheets_health() -> Dict[str, Any]:
             "enabled_as_db": _is_sheets_db_enabled(),
         }
     except Exception as e:
-        return {"configured": True, "error": str(e)}
+        return {"configured": True, "sheets": 0, "error": str(e)}

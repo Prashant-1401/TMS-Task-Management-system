@@ -10,6 +10,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+# Last auth/config error, surfaced via /api/health for diagnostics
+_LAST_ERROR: Optional[str] = None
+
 SHEET_HEADERS = ["SN", "Text", "Responsible", "Responsible Email", "Responsible Phone", "Due Date", "Status", "Priority", "Plant", "Department", "Created"]
 
 ESCALATION_MATRIX_HEADERS = ["Level", "Label", "From User", "Target User", "From Role", "Target Role", "Overdue Days", "Overdue Hrs", "Notify Method", "Applicable To", "Priorities", "Active", "Description"]
@@ -24,7 +27,9 @@ def _is_configured() -> bool:
 
 
 def _get_client() -> Optional[gspread.Client]:
+    global _LAST_ERROR
     if not _is_configured():
+        _LAST_ERROR = "Not configured — need GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SHEETS_CREDENTIALS_JSON (or GOOGLE_SHEETS_CREDENTIALS_PATH)"
         print("[google-sheets] Not configured — skipping")
         return None
     try:
@@ -35,12 +40,15 @@ def _get_client() -> Optional[gspread.Client]:
         else:
             creds_path = settings.google_sheets_credentials_path
             if not os.path.exists(creds_path):
+                _LAST_ERROR = f"Credentials file not found: {creds_path}"
                 print(f"[google-sheets] Credentials file not found: {creds_path}")
                 return None
             creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        _LAST_ERROR = None
         return gspread.authorize(creds)
     except Exception as e:
-        print(f"[google-sheets] Auth failed: {e}")
+        _LAST_ERROR = f"{type(e).__name__}: {e}"
+        print(f"[google-sheets] Auth failed: {_LAST_ERROR}")
         return None
 
 
