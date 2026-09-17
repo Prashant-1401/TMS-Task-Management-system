@@ -34,3 +34,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Fallback: if Sheets are configured and no Postgres DATABASE_URL is set,
+# default to Google Sheets as the primary DB (₹0) — no env var needed on Render.
+if settings.use_google_sheets_as_db or (settings.database_url.strip() == "" and settings.google_sheets_spreadsheet_id):
+    os.environ.setdefault("USE_GOOGLE_SHEETS_AS_DB", "true")
