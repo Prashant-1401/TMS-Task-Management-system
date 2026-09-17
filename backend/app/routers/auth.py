@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -12,8 +13,49 @@ from app.config import settings
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 
+def _is_sheets() -> bool:
+    return os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes")
+
+
+def _truthy(v) -> bool:
+    return v if isinstance(v, bool) else str(v).strip().upper() in ("TRUE", "1", "YES")
+
+
+async def _finish_login(request: Request, username: str, role: str, uid: str, user_data: dict):
+    token = create_token({"sub": username, "role": role, "id": uid})
+    try:
+        await register_session(request, token, username)
+    except Exception as e:
+        print(f"[sessions] register failed: {e}")
+    return {"token": token, "user": user_data}
+
+
 @router.post("/login")
 async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    if _is_sheets():
+        from app.services.sheets_db_service import sheets_get_all
+        uname = req.username.strip().lower()
+        users = sheets_get_all("Users")
+        user = next((u for u in users if str(u.get("username", "")).strip().lower() == uname), None)
+        if not user or not user.get("password") or not verify_password(req.password, str(user.get("password"))):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        name = user.get("name") or ""
+        user_data = {
+            "id": user.get("id"),
+            "name": name,
+            "username": user.get("username"),
+            "role": user.get("role"),
+            "plant": user.get("plant_id"),
+            "dept": user.get("dept_id"),
+            "initials": user.get("initials") or name[:2].upper(),
+            "color": user.get("color") or "#7C80B0",
+            "phone": user.get("phone"),
+            "email": user.get("email"),
+            "superior": user.get("superior"),
+            "masterAccess": _truthy(user.get("master_access", False)),
+        }
+        return await _finish_login(request, user.get("username"), user.get("role"), user.get("id"), user_data)
+
     result = await db.execute(
         select(User).where(func.lower(User.username) == req.username.strip().lower())
     )
@@ -35,13 +77,7 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
         "superior": user.superior,
         "masterAccess": getattr(user, 'master_access', False),
     }
-    token = create_token({"sub": user.username, "role": user.role, "id": user.id})
-    # Register this device session (best-effort, never block login)
-    try:
-        await register_session(request, token, user.username)
-    except Exception as e:
-        print(f"[sessions] register failed: {e}")
-    return {"token": token, "user": user_data}
+    return await _finish_login(request, user.username, user.role, user.id, user_data)
 
 
 @router.post("/master-login")
