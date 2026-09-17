@@ -14,6 +14,8 @@ SCOPES = [
 _LAST_ERROR: Optional[str] = None
 # Cache the authorized client so we don't re-read credentials on every call
 _CLIENT_CACHE: Optional[gspread.Client] = None
+# Service account email currently in use (for diagnostics)
+_ACCOUNT_EMAIL: Optional[str] = None
 
 SHEET_HEADERS = ["SN", "Text", "Responsible", "Responsible Email", "Responsible Phone", "Due Date", "Status", "Priority", "Plant", "Department", "Created"]
 
@@ -29,7 +31,7 @@ def _is_configured() -> bool:
 
 
 def _get_client() -> Optional[gspread.Client]:
-    global _LAST_ERROR, _CLIENT_CACHE
+    global _LAST_ERROR, _CLIENT_CACHE, _ACCOUNT_EMAIL
     if _CLIENT_CACHE is not None:
         return _CLIENT_CACHE
     if not _is_configured():
@@ -40,6 +42,7 @@ def _get_client() -> Optional[gspread.Client]:
         creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
         if creds_json:
             info = json.loads(creds_json)
+            _ACCOUNT_EMAIL = info.get("client_email")
             creds = Credentials.from_service_account_info(info, scopes=SCOPES)
         else:
             creds_path = settings.google_sheets_credentials_path
@@ -47,6 +50,7 @@ def _get_client() -> Optional[gspread.Client]:
                 _LAST_ERROR = f"Credentials file not found: {creds_path}"
                 print(f"[google-sheets] Credentials file not found: {creds_path}")
                 return None
+            _ACCOUNT_EMAIL = json.load(open(creds_path)).get("client_email")
             creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         _LAST_ERROR = None
         _CLIENT_CACHE = gspread.authorize(creds)

@@ -298,6 +298,7 @@ async def root():
 @app.get("/api/health")
 async def health():
     from app.services.sheets_db_service import sheets_health
+    from app.services import google_sheets_service as _gss
     sheets = sheets_health()
     return {
         "status": "ok",
@@ -311,6 +312,7 @@ async def health():
         "sheets_as_db": sheets.get("enabled_as_db", False),
         "sheets_count": sheets.get("sheets", 0),
         "sheets_error": sheets.get("error"),
+        "sheets_account": _gss._ACCOUNT_EMAIL,
     }
 
 
