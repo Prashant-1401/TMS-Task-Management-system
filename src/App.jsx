@@ -217,6 +217,7 @@ const SNAKE_TO_CAMEL = {
   from_role: "fromRole", target_role: "targetRole",
   from_user: "fromUser", target_user: "targetUser",
   applicable_to: "applicableTo",
+  action_sn: "sn",
   scheduled_days: "scheduledDays", guidelines: "guidelines",
   src_id: "srcId", src: "src", meetingid: "meetingId", meeting_name: "meetingName",
 };
@@ -6220,8 +6221,8 @@ function EscalationsPage({ actions, setActions, audit, users, escMatrix, plants,
 
   const filteredActive = activeEscalations.filter(item => {
     const a = item.action;
-    const matchesSearch = a.sn.toLowerCase().includes(search.toLowerCase()) ||
-      a.text.toLowerCase().includes(search.toLowerCase()) ||
+    const matchesSearch = (a.sn || "").toLowerCase().includes(search.toLowerCase()) ||
+      (a.text || "").toLowerCase().includes(search.toLowerCase()) ||
       (a.responsible || "").toLowerCase().includes(search.toLowerCase());
     const matchesPlant = !plantFilter || a.plant === plantFilter;
     const matchesDept = !deptFilter || a.dept === deptFilter;
@@ -6231,8 +6232,8 @@ function EscalationsPage({ actions, setActions, audit, users, escMatrix, plants,
   });
 
   const filteredHistory = scopedAudit.filter(log => {
-    const matchesSearch = log.sn.toLowerCase().includes(search.toLowerCase()) ||
-      log.text.toLowerCase().includes(search.toLowerCase()) ||
+    const matchesSearch = (log.sn || "").toLowerCase().includes(search.toLowerCase()) ||
+      (log.text || "").toLowerCase().includes(search.toLowerCase()) ||
       (log.reason || "").toLowerCase().includes(search.toLowerCase());
     const matchesTier = !tierFilter || String(log.level) === tierFilter;
     const action = actions.find(a => a.sn === log.sn);

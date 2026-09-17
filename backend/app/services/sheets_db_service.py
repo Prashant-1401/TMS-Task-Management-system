@@ -22,15 +22,68 @@ Caching: In-memory 30s cache per table to handle burst (e.g., 12 parallel apiGet
 import os
 import time
 import json
+import tempfile
 from typing import Dict, Any, List, Optional
 from app.config import settings
 from app.services.google_sheets_service import _get_client, _is_configured
 
-# Cache: {sheet_name: (timestamp, rows)}
-_CACHE: Dict[str, tuple] = {}
-CACHE_TTL = 60  # seconds — longer TTL keeps us under the Sheets 60 reads/min quota
+# Disk-backed cache shared across all gunicorn workers so each table is read
+# from the Sheets API at most once per TTL (stays under the 60 reads/min quota).
+CACHE_TTL = 60  # seconds
+_CACHE_FILE = os.path.join(tempfile.gettempdir(), "tms_sheets_cache.json")
 # Cache the opened Spreadsheet object to avoid an extra API metadata read per call
 _SPREADSHEET = None
+
+
+def _disk_get(sheet_name: str):
+    try:
+        if not os.path.exists(_CACHE_FILE):
+            return None
+        with open(_CACHE_FILE) as f:
+            data = json.load(f)
+        e = data.get(sheet_name)
+        if e and (time.time() - e.get("ts", 0)) < CACHE_TTL:
+            return e.get("rows")
+    except Exception:
+        pass
+    return None
+
+
+def _disk_set(sheet_name: str, rows):
+    try:
+        data = {}
+        if os.path.exists(_CACHE_FILE):
+            try:
+                with open(_CACHE_FILE) as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        data[sheet_name] = {"ts": time.time(), "rows": rows}
+        tmp = f"{_CACHE_FILE}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp, _CACHE_FILE)
+    except Exception:
+        pass
+
+
+def _disk_invalidate(sheet_name: str = None):
+    try:
+        if not os.path.exists(_CACHE_FILE):
+            return
+        if sheet_name is None:
+            os.remove(_CACHE_FILE)
+            return
+        with open(_CACHE_FILE) as f:
+            data = json.load(f)
+        if sheet_name in data:
+            del data[sheet_name]
+            tmp = f"{_CACHE_FILE}.{os.getpid()}.tmp"
+            with open(tmp, "w") as f:
+                json.dump(data, f)
+            os.replace(tmp, _CACHE_FILE)
+    except Exception:
+        pass
 
 # Map sheet name -> PK column (first column is PK for all except MeetingPresets)
 PK_MAP = {
@@ -141,11 +194,11 @@ def sheets_get_all(sheet_name: str, use_cache: bool = True) -> List[Dict[str, An
         print(f"[sheets-db] Not configured, cannot get {sheet_name}")
         return []
 
-    # Check cache
-    if use_cache and sheet_name in _CACHE:
-        ts, rows = _CACHE[sheet_name]
-        if time.time() - ts < CACHE_TTL:
-            return rows
+    # Check shared disk cache (fresh within TTL → no Sheets API read)
+    if use_cache:
+        cached = _disk_get(sheet_name)
+        if cached is not None:
+            return cached
 
     sh = _get_spreadsheet()
     if not sh:
@@ -172,7 +225,7 @@ def sheets_get_all(sheet_name: str, use_cache: bool = True) -> List[Dict[str, An
             rows.append(d)
 
         # Cache
-        _CACHE[sheet_name] = (time.time(), rows)
+        _disk_set(sheet_name, rows)
         print(f"[sheets-db] Get {sheet_name}: {len(rows)} rows")
         return rows
 
@@ -213,7 +266,7 @@ def sheets_create(sheet_name: str, data: Dict[str, Any]) -> Optional[Dict[str, A
         ws.append_row(row, value_input_option="USER_ENTERED")
 
         # Invalidate cache
-        _CACHE.pop(sheet_name, None)
+        _disk_invalidate(sheet_name)
 
         print(f"[sheets-db] Created {sheet_name} {pk}={data.get(pk, '?')}")
         return data
@@ -262,7 +315,7 @@ def sheets_update(sheet_name: str, id_val: str, data: Dict[str, Any]) -> Optiona
         ws.update(range_name=f"A{target_row}:{end_col}{target_row}", values=[row])
 
         # Invalidate cache
-        _CACHE.pop(sheet_name, None)
+        _disk_invalidate(sheet_name)
 
         print(f"[sheets-db] Updated {sheet_name} {pk}={id_val}")
         return merged
@@ -301,7 +354,7 @@ def sheets_delete(sheet_name: str, id_val: str) -> bool:
         ws.delete_rows(target_row)
 
         # Invalidate cache
-        _CACHE.pop(sheet_name, None)
+        _disk_invalidate(sheet_name)
 
         print(f"[sheets-db] Deleted {sheet_name} {pk}={id_val}")
         return True
@@ -335,9 +388,9 @@ def sheets_bulk_upsert(sheet_name: str, rows: List[Dict[str, Any]]) -> Dict[str,
 def sheets_clear_cache(sheet_name: str = None):
     """Clear cache for sheet or all"""
     if sheet_name:
-        _CACHE.pop(sheet_name, None)
+        _disk_invalidate(sheet_name)
     else:
-        _CACHE.clear()
+        _disk_invalidate(None)
 
 # Convenience wrappers for each table
 def get_plants(): return sheets_get_all("Plants")
