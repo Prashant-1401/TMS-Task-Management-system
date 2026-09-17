@@ -28,7 +28,9 @@ from app.services.google_sheets_service import _get_client, _is_configured
 
 # Cache: {sheet_name: (timestamp, rows)}
 _CACHE: Dict[str, tuple] = {}
-CACHE_TTL = 30  # seconds
+CACHE_TTL = 60  # seconds — longer TTL keeps us under the Sheets 60 reads/min quota
+# Cache the opened Spreadsheet object to avoid an extra API metadata read per call
+_SPREADSHEET = None
 
 # Map sheet name -> PK column (first column is PK for all except MeetingPresets)
 PK_MAP = {
@@ -122,6 +124,17 @@ def _dict_to_row(headers: List[str], data: Dict[str, Any]) -> List[str]:
         row.append(val)
     return row
 
+def _get_spreadsheet():
+    """Return a cached gspread Spreadsheet (avoids one API read per call)."""
+    global _SPREADSHEET
+    if _SPREADSHEET is not None:
+        return _SPREADSHEET
+    client = _get_client()
+    if not client:
+        return None
+    _SPREADSHEET = client.open_by_key(settings.google_sheets_spreadsheet_id)
+    return _SPREADSHEET
+
 def sheets_get_all(sheet_name: str, use_cache: bool = True) -> List[Dict[str, Any]]:
     """Get all rows from a sheet as list of dicts"""
     if not _is_configured():
@@ -134,12 +147,11 @@ def sheets_get_all(sheet_name: str, use_cache: bool = True) -> List[Dict[str, An
         if time.time() - ts < CACHE_TTL:
             return rows
 
-    client = _get_client()
-    if not client:
+    sh = _get_spreadsheet()
+    if not sh:
         return []
 
     try:
-        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
         try:
             ws = sh.worksheet(sheet_name)
         except Exception:
@@ -187,7 +199,7 @@ def sheets_create(sheet_name: str, data: Dict[str, Any]) -> Optional[Dict[str, A
         return None
 
     try:
-        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        sh = _get_spreadsheet()
         ws = sh.worksheet(sheet_name)
         headers = ws.row_values(1)
 
@@ -222,7 +234,7 @@ def sheets_update(sheet_name: str, id_val: str, data: Dict[str, Any]) -> Optiona
         return None
 
     try:
-        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        sh = _get_spreadsheet()
         ws = sh.worksheet(sheet_name)
         headers = ws.row_values(1)
         pk = PK_MAP.get(sheet_name, "id")
@@ -271,7 +283,7 @@ def sheets_delete(sheet_name: str, id_val: str) -> bool:
         return False
 
     try:
-        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        sh = _get_spreadsheet()
         ws = sh.worksheet(sheet_name)
         pk = PK_MAP.get(sheet_name, "id")
 
@@ -354,7 +366,7 @@ def sheets_health() -> Dict[str, Any]:
                 "enabled_as_db": _is_sheets_db_enabled(),
                 "error": _gss._LAST_ERROR or "Google Sheets client unavailable",
             }
-        sh = client.open_by_key(settings.google_sheets_spreadsheet_id)
+        sh = _get_spreadsheet()
         worksheets = sh.worksheets()
         return {
             "configured": True,

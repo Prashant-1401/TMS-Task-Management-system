@@ -12,6 +12,8 @@ SCOPES = [
 
 # Last auth/config error, surfaced via /api/health for diagnostics
 _LAST_ERROR: Optional[str] = None
+# Cache the authorized client so we don't re-read credentials on every call
+_CLIENT_CACHE: Optional[gspread.Client] = None
 
 SHEET_HEADERS = ["SN", "Text", "Responsible", "Responsible Email", "Responsible Phone", "Due Date", "Status", "Priority", "Plant", "Department", "Created"]
 
@@ -27,7 +29,9 @@ def _is_configured() -> bool:
 
 
 def _get_client() -> Optional[gspread.Client]:
-    global _LAST_ERROR
+    global _LAST_ERROR, _CLIENT_CACHE
+    if _CLIENT_CACHE is not None:
+        return _CLIENT_CACHE
     if not _is_configured():
         _LAST_ERROR = "Not configured — need GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SHEETS_CREDENTIALS_JSON (or GOOGLE_SHEETS_CREDENTIALS_PATH)"
         print("[google-sheets] Not configured — skipping")
@@ -45,7 +49,8 @@ def _get_client() -> Optional[gspread.Client]:
                 return None
             creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         _LAST_ERROR = None
-        return gspread.authorize(creds)
+        _CLIENT_CACHE = gspread.authorize(creds)
+        return _CLIENT_CACHE
     except Exception as e:
         _LAST_ERROR = f"{type(e).__name__}: {e}"
         print(f"[google-sheets] Auth failed: {_LAST_ERROR}")
