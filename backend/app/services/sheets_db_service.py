@@ -21,6 +21,7 @@ Caching: In-memory 30s cache per table to handle burst (e.g., 12 parallel apiGet
 
 import os
 import time
+import json
 from typing import Dict, Any, List, Optional
 from app.config import settings
 from app.services.google_sheets_service import _get_client, _is_configured
@@ -60,6 +61,32 @@ def _get_headers(worksheet) -> List[str]:
     except Exception:
         return []
 
+# Columns that hold JSON (lists/dicts) and must be parsed back into Python objects
+JSON_FIELDS = {
+    "risks", "team", "attendees", "instructions", "completed_sessions",
+    "guidelines", "scheduled_days", "live_draft", "priorities",
+    "revision_history", "attachments",
+}
+
+def _parse_json_field(val: str):
+    """Parse a JSON/Python-repr string into list/dict; fall back to [] or {}."""
+    if val is None or val == "":
+        return None
+    s = val.strip()
+    if not s or s in ("[]",):
+        return []
+    if s in ("{}",):
+        return {}
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    try:
+        import ast
+        return ast.literal_eval(s)
+    except Exception:
+        return []
+
 def _row_to_dict(headers: List[str], row: List[str]) -> Dict[str, Any]:
     """Convert row list to dict using headers"""
     d = {}
@@ -72,7 +99,8 @@ def _row_to_dict(headers: List[str], row: List[str]) -> Dict[str, Any]:
             # Convert boolean strings
             elif val in ("TRUE", "FALSE"):
                 val = val == "TRUE"
-            # Convert numeric strings for level, progress, etc. but keep as string for IDs
+            elif h in JSON_FIELDS and isinstance(val, str):
+                val = _parse_json_field(val)
             d[h] = val
         else:
             d[h] = None
@@ -87,6 +115,8 @@ def _dict_to_row(headers: List[str], data: Dict[str, Any]) -> List[str]:
             val = ""
         elif isinstance(val, bool):
             val = "TRUE" if val else "FALSE"
+        elif isinstance(val, (list, dict)):
+            val = json.dumps(val)
         else:
             val = str(val)
         row.append(val)
