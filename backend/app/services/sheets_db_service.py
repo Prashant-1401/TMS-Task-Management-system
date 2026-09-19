@@ -233,12 +233,25 @@ def sheets_get_all(sheet_name: str, use_cache: bool = True) -> List[Dict[str, An
         print(f"[sheets-db] Failed to get {sheet_name}: {e}")
         return []
 
+def _col_to_letter(col_idx: int) -> str:
+    """Convert 1-based column index to A1 column letter(s), e.g. 1->A, 27->AA, 34->AH"""
+    result = ""
+    while col_idx > 0:
+        col_idx, remainder = divmod(col_idx - 1, 26)
+        result = chr(65 + remainder) + result
+    return result or "A"
+
 def sheets_get_by_id(sheet_name: str, id_val: str) -> Optional[Dict[str, Any]]:
-    """Get single row by PK"""
-    rows = sheets_get_all(sheet_name)
+    """Get single row by PK (with un-cached fallback if not in cache)"""
     pk = PK_MAP.get(sheet_name, "id")
+    rows = sheets_get_all(sheet_name, use_cache=True)
     for r in rows:
-        if str(r.get(pk, "")) == str(id_val):
+        if str(r.get(pk, "")).strip() == str(id_val).strip():
+            return r
+    # Fallback to fresh read from Google Sheets
+    rows = sheets_get_all(sheet_name, use_cache=False)
+    for r in rows:
+        if str(r.get(pk, "")).strip() == str(id_val).strip():
             return r
     return None
 
@@ -291,12 +304,13 @@ def sheets_update(sheet_name: str, id_val: str, data: Dict[str, Any]) -> Optiona
         ws = sh.worksheet(sheet_name)
         headers = ws.row_values(1)
         pk = PK_MAP.get(sheet_name, "id")
+        pk_idx = headers.index(pk) if pk in headers else 0
 
-        # Find row
+        # Find row by matching the PK column
         all_values = ws.get_all_values()
         target_row = None
         for idx, row_vals in enumerate(all_values[1:], start=2):
-            if row_vals and str(row_vals[0]) == str(id_val):
+            if len(row_vals) > pk_idx and str(row_vals[pk_idx]).strip() == str(id_val).strip():
                 target_row = idx
                 break
 
@@ -310,8 +324,7 @@ def sheets_update(sheet_name: str, id_val: str, data: Dict[str, Any]) -> Optiona
         merged[pk] = id_val  # Keep PK
 
         row = _dict_to_row(headers, merged)
-        # Update range A<row>:<last_col><row>
-        end_col = chr(64 + len(headers)) if len(headers) <= 26 else "Z"
+        end_col = _col_to_letter(len(headers))
         ws.update(range_name=f"A{target_row}:{end_col}{target_row}", values=[row])
 
         # Invalidate cache
@@ -339,11 +352,12 @@ def sheets_delete(sheet_name: str, id_val: str) -> bool:
         sh = _get_spreadsheet()
         ws = sh.worksheet(sheet_name)
         pk = PK_MAP.get(sheet_name, "id")
+        pk_idx = headers.index(pk) if pk in headers else 0
 
         all_values = ws.get_all_values()
         target_row = None
         for idx, row_vals in enumerate(all_values[1:], start=2):
-            if row_vals and str(row_vals[0]) == str(id_val):
+            if len(row_vals) > pk_idx and str(row_vals[pk_idx]).strip() == str(id_val).strip():
                 target_row = idx
                 break
 
