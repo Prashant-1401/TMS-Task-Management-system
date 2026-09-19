@@ -601,6 +601,36 @@ const normalizeStatus = s => (s === "PENDING CONFIRM" ? "IN PROCESS" : s);
 const displayStatus = a => (a.pendingConfirmation && a.status !== "COMPLETED" && a.status !== "DROPPED")
   ? "PENDING CONFIRM"
   : normalizeStatus(a.status);
+
+// ─── Single source of truth for action status patch normalization ────────────
+// Every place that updates an action status must call this to keep
+// pendingConfirmation and closedOn in sync with the new status.
+//
+// Rules:
+//   PENDING CONFIRM  → pendingConfirmation=true,  closedOn=null
+//   COMPLETED        → pendingConfirmation=false, closedOn=today (if missing)
+//   DROPPED          → pendingConfirmation=false, closedOn=today (if missing)
+//   anything else    → pendingConfirmation=false, closedOn=null
+//
+// Does NOT enforce who is allowed to make the transition — the backend does
+// that. Here we just make sure the flags are consistent.
+function normalizeActionPatch(patch) {
+  const p = { ...patch };
+  if (p.status === "PENDING CONFIRM") {
+    p.pendingConfirmation = true;
+    p.closedOn = null;
+  } else if (p.status === "COMPLETED") {
+    p.pendingConfirmation = false;
+    if (!p.closedOn) p.closedOn = todayStr();
+  } else if (p.status === "DROPPED") {
+    p.pendingConfirmation = false;
+    if (!p.closedOn) p.closedOn = todayStr();
+  } else if (p.status) {
+    p.pendingConfirmation = false;
+    p.closedOn = null;
+  }
+  return p;
+}
 const PRIORITY_LIST = ["CRITICAL", "WARNING", "NORMAL"];
 const SECTIONS = ["Production", "Maintenance", "Quality", "Safety", "Electrical", "Mechanical", "Instrumentation", "Stores & Logistics", "Management", "General"];
 const ATTENDEE_MAP = {
@@ -1813,7 +1843,7 @@ function ActionSidePanel({ action, onClose, onUpdate, users, plants, depts, curr
   );
 }
 
-function HomePage({ actions, setActions, user, setPage, users, meetings, plants, depts, setGlobalActiveMtg, machines, projects }) {
+function HomePage({ actions, setActions, user, setPage, users, meetings, plants, depts, setGlobalActiveMtg, machines, projects, fetchData }) {
   const now = new Date();
   const isAdmin = isUserAdmin(user);
 
@@ -1917,12 +1947,16 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
 
   // Fix 3: unified action update + single panel state
   const upAction = (id, patch) => {
+    const np = normalizeActionPatch(patch);
     setActions && setActions(p => p.map(a => {
       if (a.id !== id) return a;
-      if (patch.due && patch.due !== a.due) { const rev = { date: todayStr(), from: a.due, to: patch.due, by: user?.name || "Unknown" }; return { ...a, ...patch, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] }; }
-      return { ...a, ...patch };
+      if (np.due && np.due !== a.due) { const rev = { date: todayStr(), from: a.due, to: np.due, by: user?.name || "Unknown" }; return { ...a, ...np, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] }; }
+      return { ...a, ...np };
     }));
-    apiUpdate("actions", id, resolveRecordIds(patch, plants, depts, machines, projects, meetings));
+    apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings)).catch(err => {
+      console.error("Action update failed:", err);
+      if (fetchData) fetchData();
+    });
   };
 
   // State — single unified action detail panel
@@ -2168,7 +2202,7 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
       </div>
 
       {/* Unified action detail panel — same as Actions page */}
-      {actionPanel && <ActionDetailPanel action={actionPanel} onClose={() => setActionPanel(null)} onUpdate={(id, patch) => { upAction(id, patch); setActionPanel(p => p ? { ...p, ...patch } : p); }} user={user} users={users} allUsers={users} plants={plants} meetings={meetings} />}
+      {actionPanel && <ActionDetailPanel action={actionPanel} onClose={() => setActionPanel(null)} onUpdate={(id, patch) => { upAction(id, patch); setActionPanel(p => p ? { ...p, ...normalizeActionPatch(patch) } : p); }} user={user} users={users} allUsers={users} plants={plants} meetings={meetings} />}
 
       {/* Fix 6: Team sub modal */}
       {subModal && (
@@ -2437,7 +2471,7 @@ function ProjectCharterModal({ pr, onClose, actions, meetings, user, onProjectUp
 }
 
 /* ===================== WORK PAGE ===================== */
-function WorkPage({ plants, depts, users, onCommitFinal, actions, setActions, user, onProjectUpdate, allProjects, setProjects: setProjectsUp, allMeetings, setMeetings: setMeetingsUp, setPage, globalActiveMtg, setGlobalActiveMtg, mtgRunning, setMtgRunning, mtgElapsed, mtgTxLines, setMtgTxLines, mtgFastActions, setMtgFastActions, mtgInsights, setMtgInsights, clearMeetingState, mtgPresets, machines, reasons }) {
+function WorkPage({ plants, depts, users, onCommitFinal, actions, setActions, user, onProjectUpdate, allProjects, setProjects: setProjectsUp, allMeetings, setMeetings: setMeetingsUp, setPage, globalActiveMtg, setGlobalActiveMtg, mtgRunning, setMtgRunning, mtgElapsed, mtgTxLines, setMtgTxLines, mtgFastActions, setMtgFastActions, mtgInsights, setMtgInsights, clearMeetingState, mtgPresets, machines, reasons, fetchData }) {
   // activeMtg is now global — WorkPage just reads/writes it
   const activeMtg = globalActiveMtg;
   const setActiveMtg = (m) => { setGlobalActiveMtg(m); if (m) setMtgRunning(true); };
@@ -2485,7 +2519,7 @@ function WorkPage({ plants, depts, users, onCommitFinal, actions, setActions, us
             : a.src === activeMtg.type;
           const matchesProject = activeMtg.project && (a.projectName || a.project) === activeMtg.project;
           return matchesMeeting || matchesProject;
-        })} running={mtgRunning} setRunning={setMtgRunning} elapsed={mtgElapsed} txLines={mtgTxLines} setTxLines={setMtgTxLines} insights={mtgInsights} setInsights={setMtgInsights} currentUser={user} mtgPresets={mtgPresets} setActions={setActions} machines={machines} reasons={reasons} />;
+        })} running={mtgRunning} setRunning={setMtgRunning} elapsed={mtgElapsed} txLines={mtgTxLines} setTxLines={setMtgTxLines} insights={mtgInsights} setInsights={setMtgInsights} currentUser={user} mtgPresets={mtgPresets} setActions={setActions} machines={machines} reasons={reasons} fetchData={fetchData} />;
 
   return (
     <div className="fade-in">
@@ -2720,10 +2754,10 @@ function WorkPage({ plants, depts, users, onCommitFinal, actions, setActions, us
       <CompletedMeetingDashboard meetings={visibleMeetings} actions={actions} users={users} user={user} plants={plants} />
 
       {/* ── Weekly Meeting Accountability ── */}
-      <WeeklyMeetingAccountability meetings={visibleMeetings} actions={actions} users={users} user={user} plants={plants} machines={machines} selectedDay={selectedBeltDay} onActionUpdate={(id, patch) => { setActions(p => p.map(a => a.id !== id ? a : { ...a, ...patch })); apiUpdate("actions", id, patch); }} />
+      <WeeklyMeetingAccountability meetings={visibleMeetings} actions={actions} users={users} user={user} plants={plants} machines={machines} selectedDay={selectedBeltDay} onActionUpdate={(id, patch) => { const np = normalizeActionPatch(patch); setActions(p => p.map(a => a.id !== id ? a : { ...a, ...np })); apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects)).catch(() => fetchData && fetchData()); }} />
 
       {charter && <ProjectCharterModal pr={charter} onClose={() => { setCharter(null); setCharterActionSel(null); }} actions={actions} meetings={meetings} user={user} users={users} onProjectUpdate={updated => { setProjects(p => p.map(x => x.id === updated.id ? updated : x)); if (charter && charter.id === updated.id) setCharter(updated); onProjectUpdate(updated); }} onActionSelect={a => setCharterActionSel(a)} />}
-      {charterActionSel && <ActionDetailPanel action={charterActionSel} onClose={() => setCharterActionSel(null)} onUpdate={(id, patch) => { setActions(p => p.map(a => a.id !== id ? a : { ...a, ...patch })); apiUpdate("actions", id, patch); setCharterActionSel(p => p ? { ...p, ...patch } : p); }} user={user} users={users} allUsers={users} plants={plants} machines={machines} meetings={meetings} />}
+      {charterActionSel && <ActionDetailPanel action={charterActionSel} onClose={() => setCharterActionSel(null)} onUpdate={(id, patch) => { const np = normalizeActionPatch(patch); setActions(p => p.map(a => a.id !== id ? a : { ...a, ...np })); apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings)).catch(() => fetchData && fetchData()); setCharterActionSel(p => p ? { ...p, ...np } : p); }} user={user} users={users} allUsers={users} plants={plants} machines={machines} meetings={meetings} />}
       {showAddMtg && <AddMeetingModal plants={plants} users={users} projects={projects} onSave={m => { const mtg = { ...m, id: "M" + Date.now(), completedSessions: [] }; setMeetings(p => [...p, mtg]); apiCreate("meetings", resolveRecordIds(mtg, plants, depts, machines, projects)); setShowAddMtg(false); }} onClose={() => setShowAddMtg(false)} currentUser={user} />}
       {/* Feature 3: Add Project Modal */}
       {showAddProject && <AddProjectModal plants={plants} users={users} onSave={p => { const pName = {}; plants.forEach(pl => pName[pl.id] = pl.name); const pr = { ...p, plant: pName[p.plantId] || p.plantId, id: "PR" + Date.now(), milestones: [], risks: [], team: [], budget: p.budget ? Number(p.budget) || 0 : 0 }; setProjects(prev => [...prev, pr]); apiCreate("projects", pr); showAddProject && setShowAddProject(false); }} onClose={() => setShowAddProject(false)} currentUser={user} />}
@@ -3199,8 +3233,9 @@ function WeeklyMeetingAccountability({ meetings, actions, users, user, plants, m
           action={actionDetail}
           onClose={() => setActionDetail(null)}
           onUpdate={(id, patch) => {
-            setActionDetail(p => p ? { ...p, ...patch } : p);
-            if (onActionUpdate) onActionUpdate(id, patch);
+            const np = normalizeActionPatch(patch);
+            setActionDetail(p => p ? { ...p, ...np } : p);
+            if (onActionUpdate) onActionUpdate(id, np);
           }}
           user={user}
           users={users}
@@ -3310,7 +3345,7 @@ function AddMeetingModal({ plants, users, projects, onSave, onClose, currentUser
 }
 
 /* ===================== MEETING ROOM ===================== */
-function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBack, prevActions, relatedActions, running, setRunning, elapsed, txLines, setTxLines, insights, setInsights, currentUser, mtgPresets, setActions, machines, reasons }) {
+function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBack, prevActions, relatedActions, running, setRunning, elapsed, txLines, setTxLines, insights, setInsights, currentUser, mtgPresets, setActions, machines, reasons, fetchData }) {
   // ── Defensive: default all array props to [] to prevent "Cannot read properties of undefined (reading 'filter')" ──
   const _rel = Array.isArray(relatedActions) ? relatedActions : [];
   const _tx = Array.isArray(txLines) ? txLines : [];
@@ -3919,16 +3954,21 @@ function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBa
           });
           const mtgUpStatus = (id, status) => {
             if (!setActions) return;
-            setActions(prev => prev.map(a => String(a.id) === String(id)
-              ? { ...a, status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false }
-              : a
-            ));
-            apiUpdate("actions", id, { status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false });
+            const patch = normalizeActionPatch({ status });
+            setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...patch } : a));
+            apiUpdate("actions", id, patch).catch(err => {
+              console.error("Action update failed:", err);
+              if (fetchData) fetchData();
+            });
           };
           const mtgUpAction = (id, patch) => {
             if (!setActions) return;
-            setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...patch } : a));
-            apiUpdate("actions", id, patch);
+            const np = normalizeActionPatch(patch);
+            setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...np } : a));
+            apiUpdate("actions", id, np).catch(err => {
+              console.error("Action update failed:", err);
+              if (fetchData) fetchData();
+            });
           };
           const canDrag = !!setActions;
           if (filteredPending.length === 0) return (
@@ -4434,12 +4474,10 @@ function ActionDetailPanel({ action, onClose, onUpdate, user, users, allUsers, p
     if (field === editingField) {
       // For textarea fields, read from the ref (uncontrolled) to avoid cursor-jump bug
       const actualVal = (textareaRef.current && editingField === field) ? textareaRef.current.value : fieldVal;
-      const isCompletedStatus = field === "status" && actualVal === "COMPLETED";
-      onUpdate(action.id, {
-        [field]: actualVal,
-        closedOn: isCompletedStatus ? todayStr() : action.closedOn,
-        ...(isCompletedStatus ? { pendingConfirmation: false } : {})
-      });
+      const patch = field === "status"
+        ? normalizeActionPatch({ status: actualVal })
+        : { [field]: actualVal };
+      onUpdate(action.id, patch);
       setEditingField(null);
     }
   };
@@ -4655,14 +4693,14 @@ function ActionDetailPanel({ action, onClose, onUpdate, user, users, allUsers, p
                     </div>
                   )}
                   {!isAssignee && canMsg && (
-                    <select value={action.status} onChange={e => onUpdate(action.id, { status: e.target.value, closedOn: e.target.value === "COMPLETED" ? todayStr() : null })} style={{ fontSize: 12, padding: "5px 8px" }}>
+                    <select value={action.status} onChange={e => onUpdate(action.id, normalizeActionPatch({ status: e.target.value }))} style={{ fontSize: 12, padding: "5px 8px" }}>
                       {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
                     </select>
                   )}
                 </>
               )}
               {(action.status === "COMPLETED" || action.status === "DROPPED") && canMsg && (
-                <button className="btn btn-ghost btn-sm" onClick={() => onUpdate(action.id, { status: "IN PROCESS", closedOn: null, pendingConfirmation: false })}>↩ Reopen</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => onUpdate(action.id, normalizeActionPatch({ status: "IN PROCESS" }))}>↩ Reopen</button>
               )}
             </div>
           </div>
@@ -4751,7 +4789,7 @@ const saveFilterPref = () => {
   try { localStorage.setItem(FILTER_STORE_KEY, JSON.stringify(userFilterPref)); } catch (e) { /* ignore */ }
 };
 
-function ActionsPage({ actions, setActions, plants, depts, users, user, projects, machines, meetings }) {
+function ActionsPage({ actions, setActions, plants, depts, users, user, projects, machines, meetings, fetchData }) {
   const userKey = user?.id || "guest";
   const [view, setView] = useState(userViewPref[userKey] || "table");
   // Multi-select filters: persistent across page changes
@@ -4833,30 +4871,29 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   const upAction = (id, patch) => {
     setActions(p => p.map(a => {
       if (String(a.id) !== String(id)) return a;
-      if (patch.due && patch.due !== a.due) {
-        const rev = { date: todayStr(), from: a.due, to: patch.due, by: user?.name || "Unknown" };
-        return { ...a, ...patch, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] };
+      const np = normalizeActionPatch(patch);
+      if (np.due && np.due !== a.due) {
+        const rev = { date: todayStr(), from: a.due, to: np.due, by: user?.name || "Unknown" };
+        return { ...a, ...np, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] };
       }
-      return { ...a, ...patch };
+      return { ...a, ...np };
     }));
-    apiUpdate("actions", id, resolveRecordIds(patch, plants, depts, machines, projects, meetings));
+    apiUpdate("actions", id, resolveRecordIds(normalizeActionPatch(patch), plants, depts, machines, projects, meetings)).catch(err => {
+      console.error("Action update failed:", err);
+      if (fetchData) fetchData();
+    });
   };
   const upStatus = (id, status) => {
-    if (status === "COMPLETED") {
-      // If the status filter is active and doesn't include COMPLETED, add it
-      // so the action stays visible in the Kanban board after being dropped.
+    if (status === "COMPLETED" || status === "PENDING CONFIRM") {
+      // Expand filter so the action stays visible after status change
       setFiltersPersist(f => {
-        if (f.status.length > 0 && !f.status.includes("COMPLETED")) {
-          return { ...f, status: [...f.status, "COMPLETED"] };
+        if (f.status.length > 0 && !f.status.includes(status)) {
+          return { ...f, status: [...f.status, status] };
         }
         return f;
       });
     }
-    if (status === "PENDING CONFIRM") {
-      upAction(id, { status: "IN PROCESS", closedOn: null, pendingConfirmation: true });
-    } else {
-      upAction(id, { status, closedOn: status === "COMPLETED" ? todayStr() : null, pendingConfirmation: false });
-    }
+    upAction(id, { status });
   };
   const deleteAction = (a) => {
     if (!window.confirm(`Delete action "${a.sn}" — ${a.text?.slice(0, 50)}…? This cannot be undone.`)) return;
@@ -4991,7 +5028,7 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   user={user}
 />}
       {view === "timeline" && <TimelineView fa={fa} />}
-      {sel && <ActionDetailPanel action={sel} onClose={() => setSel(null)} onUpdate={(id, patch) => { upAction(id, patch); setSel(p => p ? { ...p, ...patch } : p); }} user={user} users={users} allUsers={users} plants={plants} machines={machines} />}
+      {sel && <ActionDetailPanel action={sel} onClose={() => setSel(null)} onUpdate={(id, patch) => { upAction(id, patch); setSel(p => p ? { ...p, ...normalizeActionPatch(patch) } : p); }} user={user} users={users} allUsers={users} plants={plants} machines={machines} />}
       {emailModal && (
         <div className="overlay" onClick={() => setEmailModal(null)}>
           <div className="modal" style={{ width: 420, padding: 28 }} onClick={e => e.stopPropagation()}>
@@ -5787,7 +5824,7 @@ function DashboardPage({ actions, plants, depts, users, audit, user, meetings, o
           </div>
         );
       })()}
-      {actionDetail && <ActionDetailPanel action={actionDetail} onClose={() => setActionDetail(null)} onUpdate={(id, patch) => { if (setActionsUp) setActionsUp(p => p.map(a => a.id !== id ? a : { ...a, ...patch })); setActionDetail(p => p ? { ...p, ...patch } : p); }} user={user} users={users} allUsers={users} plants={plants} meetings={meetings} />}
+      {actionDetail && <ActionDetailPanel action={actionDetail} onClose={() => setActionDetail(null)} onUpdate={(id, patch) => { const np = normalizeActionPatch(patch); if (setActionsUp) setActionsUp(p => p.map(a => a.id !== id ? a : { ...a, ...np })); setActionDetail(p => p ? { ...p, ...np } : p); apiUpdate("actions", id, np).catch(() => refreshData && refreshData()); }} user={user} users={users} allUsers={users} plants={plants} meetings={meetings} />}
     </div>
   );
 }
@@ -6191,7 +6228,7 @@ function TeamPage({ users, actions, escMatrix, plants, depts, user, isAdmin, set
 }
 
 /* ===================== ESCALATIONS PAGE ===================== */
-function EscalationsPage({ actions, setActions, audit, users, escMatrix, plants, depts, user }) {
+function EscalationsPage({ actions, setActions, audit, users, escMatrix, plants, depts, user, fetchData, machines = [], projects = [], meetings = [] }) {
   const [activeTab, setActiveTab] = useState("active");
   const [search, setSearch] = useState("");
   const [plantFilter, setPlantFilter] = useState("");
@@ -6401,14 +6438,20 @@ function EscalationsPage({ actions, setActions, audit, users, escMatrix, plants,
           action={selectedAction}
           onClose={() => setSelectedAction(null)}
           onUpdate={(id, patch) => {
-            setActions(p => p.map(a => a.id === id ? { ...a, ...patch } : a));
-            setSelectedAction(p => p ? { ...p, ...patch } : p);
-    apiUpdate("actions", id, resolveRecordIds(patch, plants, depts, machines, projects, meetings));
+            const np = normalizeActionPatch(patch);
+            setActions(p => p.map(a => a.id === id ? { ...a, ...np } : a));
+            setSelectedAction(p => p ? { ...p, ...np } : p);
+            apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings)).catch(err => {
+              console.error("Action update failed:", err);
+              if (fetchData) fetchData();
+            });
           }}
           user={user}
           users={users}
           allUsers={users}
           plants={plants}
+          machines={machines}
+          meetings={meetings}
         />
       )}
     </div>
@@ -6969,7 +7012,7 @@ function useAPIBridge(actions, setActions, projects, plants, depts, machines) {
             version: "1.0.0",
             getActions: () => actionsRef.current,
             getAction: (id) => actionsRef.current.find(a => a.id === id || a.sn === id),
-            updateAction: (id, patch) => { setActions(p => p.map(a => a.id === id ? { ...a, ...patch } : a)); apiUpdate("actions", id, patch); },
+            updateAction: (id, patch) => { const np = normalizeActionPatch(patch); setActions(p => p.map(a => a.id === id ? { ...a, ...np } : a)); apiUpdate("actions", id, np); },
             addAction: async (action) => {
               const localId = String(Date.now());
               const n = { ...action, id: localId, created: todayStr(), revisionHistory: [], messages: [], pendingConfirmation: false };
@@ -7315,16 +7358,17 @@ export default function App() {
     }
   };
   const updateAction = async (id, patch) => {
+    const np = normalizeActionPatch(patch);
     setActions(p => p.map(a => {
       if (a.id !== id) return a;
-      if (patch.due && patch.due !== a.due) {
-        const rev = { date: todayStr(), from: a.due, to: patch.due, by: user?.name || "Unknown" };
-        return { ...a, ...patch, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] };
+      if (np.due && np.due !== a.due) {
+        const rev = { date: todayStr(), from: a.due, to: np.due, by: user?.name || "Unknown" };
+        return { ...a, ...np, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] };
       }
-      return { ...a, ...patch };
+      return { ...a, ...np };
     }));
     try {
-      const saved = await apiUpdate("actions", id, resolveRecordIds(patch, plants, depts, machines, projects, meetings));
+      const saved = await apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings));
       if (saved && saved.id) {
         setActions(p => p.map(a => a.id === id ? { ...a, version: saved.version, revisions: saved.revisions } : a));
       }
@@ -7384,11 +7428,11 @@ export default function App() {
     <ErrorBoundary>
       <style>{CSS}</style>
       <Shell page={page} setPage={setPage} user={user} onLogout={() => { try { apiPost("/api/auth/logout", {}).catch(() => {}); } finally { setUser(null); setPage(0); clearMeetingState(); } }} onQuickAdd={() => setShowQuickAdd(true)} pendingCount={pendingForMe} auditCount={audit.length} activeMtg={globalActiveMtg} onResumeActiveMtg={() => setPage(1)} mtgRunning={mtgRunning} mtgElapsed={mtgElapsed} notifications={notifs} unreadCount={unreadNotifs} onMarkAllRead={markAllRead} users={users} actions={actions} onShowSupport={() => setShowSupport(true)} onShowProfile={() => setShowProfile(true)} onShowAdminNotifs={() => setShowAdminNotifs(true)} onShowSessions={() => setShowSessions(true)} onlineCount={onlineCount} lastSync={lastSync} syncing={syncing}>
-        {page === 0 && <HomePage actions={actions} setActions={setActions} user={user} setPage={setPage} users={users} meetings={meetings} plants={plants} depts={depts} setGlobalActiveMtg={m => { setGlobalActiveMtg(m); setMtgRunning(true); }} machines={machines} projects={projects} />}
-        {page === 1 && <WorkPage plants={plants} depts={depts} users={users} onCommitFinal={rows => { commitFinal(rows); clearMeetingState(); }} actions={actions} setActions={setActions} user={user} onProjectUpdate={updated => { setProjects(p => p.map(x => x.id === updated.id ? updated : x)); apiUpdate("projects", updated.id, updated); }} allProjects={projects} setProjects={setProjects} allMeetings={meetings} setMeetings={setMeetings} setPage={setPage} globalActiveMtg={globalActiveMtg} setGlobalActiveMtg={m => { setGlobalActiveMtg(m); if (m) setMtgRunning(true); }} mtgRunning={mtgRunning} setMtgRunning={setMtgRunning} mtgElapsed={mtgElapsed} mtgTxLines={mtgTxLines} setMtgTxLines={setMtgTxLines} mtgFastActions={mtgFastActions} setMtgFastActions={setMtgFastActions} mtgInsights={mtgInsights} setMtgInsights={setMtgInsights} clearMeetingState={clearMeetingState} mtgPresets={mtgPresets} machines={machines} reasons={reasons} />}
-        {page === 2 && <ActionsPage actions={actions} setActions={setActions} plants={plants} depts={depts} users={users} user={user} projects={projects} machines={machines} meetings={meetings} />}
+        {page === 0 && <HomePage actions={actions} setActions={setActions} user={user} setPage={setPage} users={users} meetings={meetings} plants={plants} depts={depts} setGlobalActiveMtg={m => { setGlobalActiveMtg(m); setMtgRunning(true); }} machines={machines} projects={projects} fetchData={fetchData} />}
+        {page === 1 && <WorkPage plants={plants} depts={depts} users={users} onCommitFinal={rows => { commitFinal(rows); clearMeetingState(); }} actions={actions} setActions={setActions} user={user} onProjectUpdate={updated => { setProjects(p => p.map(x => x.id === updated.id ? updated : x)); apiUpdate("projects", updated.id, updated); }} allProjects={projects} setProjects={setProjects} allMeetings={meetings} setMeetings={setMeetings} setPage={setPage} globalActiveMtg={globalActiveMtg} setGlobalActiveMtg={m => { setGlobalActiveMtg(m); if (m) setMtgRunning(true); }} mtgRunning={mtgRunning} setMtgRunning={setMtgRunning} mtgElapsed={mtgElapsed} mtgTxLines={mtgTxLines} setMtgTxLines={setMtgTxLines} mtgFastActions={mtgFastActions} setMtgFastActions={setMtgFastActions} mtgInsights={mtgInsights} setMtgInsights={setMtgInsights} clearMeetingState={clearMeetingState} mtgPresets={mtgPresets} machines={machines} reasons={reasons} fetchData={fetchData} />}
+        {page === 2 && <ActionsPage actions={actions} setActions={setActions} plants={plants} depts={depts} users={users} user={user} projects={projects} machines={machines} meetings={meetings} fetchData={fetchData} />}
         {page === 3 && <DashboardPage actions={actions} plants={plants} depts={depts} users={users} audit={audit} user={user} meetings={meetings} onViewEscalations={() => setPage(4)} refreshData={fetchData} setActions={setActions} />}
-        {page === 4 && <EscalationsPage actions={actions} setActions={setActions} audit={audit} users={users} escMatrix={escMatrix} plants={plants} depts={depts} user={user} />}
+        {page === 4 && <EscalationsPage actions={actions} setActions={setActions} audit={audit} users={users} escMatrix={escMatrix} plants={plants} depts={depts} user={user} fetchData={fetchData} machines={machines} projects={projects} meetings={meetings} />}
         {page === 99 && canAccessMasterSetup(user) && <MasterPage user={user} plants={plants} setPlants={setPlants} depts={depts} setDepts={setDepts} users={users} setUsers={setUsers} escMatrix={escMatrix} setEscMatrix={setEscMatrix} mtgPresets={mtgPresets} setMtgPresets={setMtgPresets} machines={machines} setMachines={setMachines} refreshMaster={fetchData} roles={roles} setRoles={setRoles} actions={actions} setActions={setActions} />}
       </Shell>
       {dbError && (

@@ -448,27 +448,124 @@ async def create_action(data: ActionCreate, bg: BackgroundTasks, db: AsyncSessio
     return action
 
 
+# ── Helper: split a multi-person responsible string into individual names ──
+def _split_responsible(raw: str) -> list[str]:
+    """Split comma / slash / ampersand / 'and' separated names into a list."""
+    import re
+    parts = re.split(r",|/|&|\band\b", raw or "", flags=re.IGNORECASE)
+    return [p.strip() for p in parts if p.strip()]
+
+
 @router.patch("/{action_id}")
-async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks, 
+async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                         db: AsyncSession = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
+    # ── Shared helpers ───────────────────────────────────────────────────────
+    is_admin = current_user and current_user.get("role") == "Admin"
+    user_name = current_user.get("name") if current_user else None
+
+    # ════════════════════════════════════════════════════════════════════════
+    # GOOGLE SHEETS PATH
+    # ════════════════════════════════════════════════════════════════════════
     if os.getenv("USE_GOOGLE_SHEETS_AS_DB", "").lower() in ("1", "true", "yes"):
         from app.services.sheets_db_service import sheets_get_by_id, sheets_update
         existing = sheets_get_by_id("Actions", action_id)
         if not existing:
             raise HTTPException(status_code=404, detail="Action not found")
+
         update_data = data.model_dump(exclude_unset=True)
         if "project" in update_data:
             update_data["project_name"] = update_data.pop("project")
-        # Simplified Sheets logic: no complex status transition enforcement, just update
-        # but handle closed_on auto for COMPLETED/DROPPED
-        if update_data.get("status") in ("COMPLETED", "DROPPED") and existing.get("status") not in ("COMPLETED", "DROPPED"):
-            update_data.setdefault("closed_on", str(_dt.date.today()))
+
+        # ── Status / pendingConfirmation normalization & enforcement ──────────
+        new_status = update_data.get("status")
+        old_status = existing.get("status") or ""
+        old_pending = existing.get("pending_confirmation") in (True, "true", "True", 1, "1")
+        resp_names = _split_responsible(existing.get("responsible") or "")
+
+        if new_status and new_status != old_status:
+            # Rule 1 – request completion
+            if new_status == "PENDING CONFIRM":
+                if user_name and user_name not in resp_names and not is_admin:
+                    raise HTTPException(status_code=403, detail="Only the responsible user or Admin can request completion")
+                update_data["pending_confirmation"] = True
+                update_data["closed_on"] = None
+                # Notify allocator
+                alloc_name = existing.get("allocated_by") or ""
+                if alloc_name:
+                    from app.services.sheets_db_service import sheets_get_all
+                    all_users = sheets_get_all("Users", use_cache=True)
+                    alloc_user = next((u for u in all_users if u.get("name") == alloc_name), None)
+                    if alloc_user and alloc_user.get("email"):
+                        bg.add_task(send_completion_request_email, alloc_user["email"],
+                                    existing.get("sn"), existing.get("text"), user_name or "Unknown", alloc_name)
+
+            # Rule 2 – confirm completion
+            elif new_status == "COMPLETED" and (old_status == "PENDING CONFIRM" or old_pending):
+                if user_name != existing.get("allocated_by") and not is_admin:
+                    raise HTTPException(status_code=403, detail="Only the allocator or Admin can confirm completion")
+                update_data["pending_confirmation"] = False
+                update_data["closed_by"] = user_name
+                if not update_data.get("closed_on"):
+                    update_data["closed_on"] = str(_dt.date.today())
+                # Notify all responsible persons
+                if resp_names:
+                    from app.services.sheets_db_service import sheets_get_all
+                    all_users = sheets_get_all("Users", use_cache=True)
+                    for rn in resp_names:
+                        ru = next((u for u in all_users if u.get("name") == rn), None)
+                        if ru and ru.get("email"):
+                            bg.add_task(send_completion_confirmed_email, ru["email"],
+                                        existing.get("sn"), existing.get("text"), user_name or "Unknown")
+
+            # Admin force-complete from any non-PENDING status
+            elif new_status == "COMPLETED" and is_admin:
+                update_data["pending_confirmation"] = False
+                if not update_data.get("closed_on"):
+                    update_data["closed_on"] = str(_dt.date.today())
+
+            # Non-privileged user trying to jump to COMPLETED – force PENDING CONFIRM
+            elif new_status == "COMPLETED":
+                update_data["status"] = "PENDING CONFIRM"
+                update_data["pending_confirmation"] = True
+                update_data["closed_on"] = None
+
+            # Rule 3 – reject completion
+            elif new_status == "IN PROCESS" and (old_status == "PENDING CONFIRM" or old_pending):
+                if user_name != existing.get("allocated_by") and not is_admin:
+                    raise HTTPException(status_code=403, detail="Only the allocator or Admin can reject completion")
+                update_data["pending_confirmation"] = False
+                update_data["closed_on"] = None
+                # Notify all responsible persons
+                if resp_names:
+                    from app.services.sheets_db_service import sheets_get_all
+                    all_users = sheets_get_all("Users", use_cache=True)
+                    for rn in resp_names:
+                        ru = next((u for u in all_users if u.get("name") == rn), None)
+                        if ru and ru.get("email"):
+                            bg.add_task(send_completion_rejected_email, ru["email"],
+                                        existing.get("sn"), existing.get("text"), user_name or "Unknown")
+
+            # DROPPED: close and clear pending
+            elif new_status == "DROPPED":
+                update_data["pending_confirmation"] = False
+                if not update_data.get("closed_on"):
+                    update_data["closed_on"] = str(_dt.date.today())
+
+            # Any other status change: clear pending flag
+            else:
+                update_data["pending_confirmation"] = False
+                update_data["closed_on"] = None
+
+        elif update_data.get("pending_confirmation") is False and old_pending:
+            if user_name != existing.get("allocated_by") and not is_admin:
+                raise HTTPException(status_code=403, detail="Only the allocator or Admin can clear pending confirmation")
+        # ── End Sheets status enforcement ────────────────────────────────────
+
         # Preserve revision_history merge
         if "revision_history" in update_data:
             incoming_history = update_data.pop("revision_history")
             current_history = existing.get("revision_history") or []
-            # Sheets may store as string; try to normalize to list
             if isinstance(current_history, str):
                 import json
                 try:
@@ -482,6 +579,7 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                 update_data["revisions"] = int(existing.get("revisions") or 0) + 1
             except Exception:
                 update_data["revisions"] = 1
+
         # Preserve attachments merge
         if "attachments" in update_data:
             incoming = update_data["attachments"] or []
@@ -502,43 +600,61 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                 else:
                     merged.append(att)
             update_data["attachments"] = merged
+
         # version bump
         try:
             update_data["version"] = int(existing.get("version") or 0) + 1
         except Exception:
             pass
+
         row = sheets_update("Actions", action_id, update_data)
         if not row:
             raise HTTPException(status_code=404, detail="Action not found")
         return row
+
+    # ════════════════════════════════════════════════════════════════════════
+    # DATABASE (PostgreSQL) PATH
+    # ════════════════════════════════════════════════════════════════════════
     result = await db.execute(
         select(Action).where(Action.id == action_id).with_for_update()
     )
     action = result.scalar_one_or_none()
     if not action:
         raise HTTPException(status_code=404, detail="Action not found")
+
     update_data = data.model_dump(exclude_unset=True)
     if "project" in update_data:
         update_data["project_name"] = update_data.pop("project")
-    if update_data.get("status") in ("COMPLETED", "DROPPED") and action.status not in ("COMPLETED", "DROPPED"):
-        update_data["closed_on"] = _dt.date.today()
 
-    # --- Status transition enforcement ---
     new_status = update_data.get("status")
-    new_pending = update_data.get("pending_confirmation")
     old_status = action.status
-    user_name = current_user.get("name") if current_user else None
+    old_pending = action.pending_confirmation
+    resp_names = _split_responsible(action.responsible or "")
 
+    # ── Step 1: Always keep pendingConfirmation in sync with status ──────────
+    if new_status == "PENDING CONFIRM":
+        update_data["pending_confirmation"] = True
+        update_data["closed_on"] = None
+    elif new_status in ("COMPLETED", "DROPPED"):
+        update_data["pending_confirmation"] = False
+        if new_status == "COMPLETED" and not update_data.get("closed_on"):
+            update_data["closed_on"] = _dt.date.today()
+    elif new_status:
+        update_data["pending_confirmation"] = False
+        update_data["closed_on"] = None
+    elif update_data.get("pending_confirmation") is True:
+        # Sending pendingConfirmation=True without status = ignored
+        update_data["pending_confirmation"] = False
+
+    # ── Step 2: Permission-gated transition rules ────────────────────────────
     if new_status and new_status != old_status:
-        # Rule 1: Only responsible user can request completion (PENDING CONFIRM)
-        if new_status == "PENDING CONFIRM" or new_pending is True:
-            resp_names = [n.strip() for n in (action.responsible or "").split(",")]
-            if user_name and user_name not in resp_names:
-                raise HTTPException(status_code=403, detail="Only the responsible user can request completion")
-            # Ensure status is PENDING CONFIRM and pending_confirmation is True
-            update_data["status"] = "PENDING CONFIRM"
+        # Rule 1 – request completion (→ PENDING CONFIRM)
+        if new_status == "PENDING CONFIRM":
+            if user_name and user_name not in resp_names and not is_admin:
+                raise HTTPException(status_code=403, detail="Only the responsible user or Admin can request completion")
             update_data["pending_confirmation"] = True
-            # Find allocator's email for notification
+            update_data["closed_on"] = None
+            # Notify allocator
             if action.allocated_by:
                 alloc_q = await db.execute(select(User).where(User.name == action.allocated_by))
                 allocator = alloc_q.scalar_one_or_none()
@@ -546,36 +662,60 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                     bg.add_task(send_completion_request_email, allocator.email,
                                 action.sn, action.text, user_name or "Unknown", action.allocated_by)
 
-        # Rule 2: Only allocator can confirm completion
-        elif new_status == "COMPLETED" and old_status == "PENDING CONFIRM":
-            if user_name and user_name != action.allocated_by:
-                raise HTTPException(status_code=403, detail="Only the allocator can confirm completion")
+        # Rule 2 – confirm completion (PENDING CONFIRM → COMPLETED)
+        elif new_status == "COMPLETED" and (old_status == "PENDING CONFIRM" or old_pending):
+            if user_name != action.allocated_by and not is_admin:
+                raise HTTPException(status_code=403, detail="Only the allocator or Admin can confirm completion")
             update_data["pending_confirmation"] = False
             update_data["closed_by"] = user_name
-            # Notify responsible user
-            resp_q = await db.execute(select(User).where(User.name == action.responsible))
-            resp_user = resp_q.scalar_one_or_none()
-            if resp_user and resp_user.email:
-                bg.add_task(send_completion_confirmed_email, resp_user.email,
-                            action.sn, action.text, user_name or "Unknown")
+            if not update_data.get("closed_on"):
+                update_data["closed_on"] = _dt.date.today()
+            # Notify all responsible persons
+            if resp_names:
+                resp_q = await db.execute(select(User).where(User.name.in_(resp_names)))
+                for resp_user in resp_q.scalars().all():
+                    if resp_user and resp_user.email:
+                        bg.add_task(send_completion_confirmed_email, resp_user.email,
+                                    action.sn, action.text, user_name or "Unknown")
 
-        # Rule 3: Only allocator can reject completion (back to IN PROCESS)
-        elif new_status == "IN PROCESS" and old_status == "PENDING CONFIRM":
-            if user_name and user_name != action.allocated_by:
-                raise HTTPException(status_code=403, detail="Only the allocator can reject completion")
+        # Rule 4 – Admin force-complete from any status (bypass PENDING CONFIRM)
+        elif new_status == "COMPLETED" and is_admin:
             update_data["pending_confirmation"] = False
-            # Notify responsible user
-            resp_q = await db.execute(select(User).where(User.name == action.responsible))
-            resp_user = resp_q.scalar_one_or_none()
-            if resp_user and resp_user.email:
-                bg.add_task(send_completion_rejected_email, resp_user.email,
-                            action.sn, action.text, user_name or "Unknown")
+            if not update_data.get("closed_on"):
+                update_data["closed_on"] = _dt.date.today()
+            # Note: closed_by NOT set here (force-complete, not a confirm)
 
-        # Rule 4: Block direct COMPLETED from non-PENDING states (except admin/master)
-        elif new_status == "COMPLETED" and old_status != "PENDING CONFIRM":
-            if current_user and current_user.get("role") not in ("Admin",):
-                raise HTTPException(status_code=403, detail="Actions must go through PENDING CONFIRM before completion")
-    # --- End status enforcement ---
+        # Rule 3 – non-privileged user jumps directly to COMPLETED → force PENDING CONFIRM
+        elif new_status == "COMPLETED":
+            raise HTTPException(
+                status_code=403,
+                detail="Actions must go through PENDING CONFIRM before completion, or be confirmed by the allocator/Admin"
+            )
+
+        # Rule 3b – reject completion (PENDING CONFIRM → IN PROCESS)
+        elif new_status == "IN PROCESS" and (old_status == "PENDING CONFIRM" or old_pending):
+            if user_name != action.allocated_by and not is_admin:
+                raise HTTPException(status_code=403, detail="Only the allocator or Admin can reject completion")
+            update_data["pending_confirmation"] = False
+            update_data["closed_on"] = None
+            # Notify all responsible persons
+            if resp_names:
+                resp_q = await db.execute(select(User).where(User.name.in_(resp_names)))
+                for resp_user in resp_q.scalars().all():
+                    if resp_user and resp_user.email:
+                        bg.add_task(send_completion_rejected_email, resp_user.email,
+                                    action.sn, action.text, user_name or "Unknown")
+
+        # Any other status change: clear pending flag and closedOn
+        else:
+            update_data["pending_confirmation"] = False
+            if new_status not in ("COMPLETED", "DROPPED"):
+                update_data.setdefault("closed_on", None)
+
+    elif update_data.get("pending_confirmation") is False and old_pending:
+        if user_name != action.allocated_by and not is_admin:
+            raise HTTPException(status_code=403, detail="Only the allocator or Admin can clear pending confirmation")
+    # ── End status enforcement ───────────────────────────────────────────────
 
     if "revision_history" in update_data:
         incoming_history = update_data.pop("revision_history")
@@ -588,11 +728,11 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
     # Preserve base64 data in attachments if frontend sends metadata-only list
     if "attachments" in update_data:
         incoming = update_data["attachments"] or []
-        existing = {a["id"]: a for a in (action.attachments or []) if "data" in a}
+        existing_atts = {a["id"]: a for a in (action.attachments or []) if "data" in a}
         merged = []
         for att in incoming:
-            if att.get("id") in existing and "data" not in att:
-                merged.append(existing[att["id"]])
+            if att.get("id") in existing_atts and "data" not in att:
+                merged.append(existing_atts[att["id"]])
             else:
                 merged.append(att)
         update_data["attachments"] = merged
