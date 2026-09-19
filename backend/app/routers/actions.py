@@ -461,8 +461,9 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                         db: AsyncSession = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
     # ── Shared helpers ───────────────────────────────────────────────────────
-    is_admin = current_user and current_user.get("role") == "Admin"
+    is_admin = bool(current_user and (current_user.get("role") == "Admin" or current_user.get("is_admin")))
     user_name = current_user.get("name") if current_user else None
+    user_name_clean = (user_name or "").strip().lower()
 
     # ════════════════════════════════════════════════════════════════════════
     # GOOGLE SHEETS PATH
@@ -482,27 +483,31 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
         old_status = existing.get("status") or ""
         old_pending = existing.get("pending_confirmation") in (True, "true", "True", 1, "1")
         resp_names = _split_responsible(existing.get("responsible") or "")
+        resp_names_clean = [n.strip().lower() for n in resp_names]
+        alloc_name = (existing.get("allocated_by") or "").strip()
+        alloc_name_clean = alloc_name.lower()
+        is_allocator = bool(user_name_clean and user_name_clean == alloc_name_clean)
+        is_responsible = bool(user_name_clean and user_name_clean in resp_names_clean)
 
         if new_status and new_status != old_status:
             # Rule 1 – request completion
             if new_status == "PENDING CONFIRM":
-                if user_name and user_name not in resp_names and not is_admin:
+                if user_name_clean and not is_responsible and not is_admin:
                     raise HTTPException(status_code=403, detail="Only the responsible user or Admin can request completion")
                 update_data["pending_confirmation"] = True
                 update_data["closed_on"] = None
                 # Notify allocator
-                alloc_name = existing.get("allocated_by") or ""
                 if alloc_name:
                     from app.services.sheets_db_service import sheets_get_all
                     all_users = sheets_get_all("Users", use_cache=True)
-                    alloc_user = next((u for u in all_users if u.get("name") == alloc_name), None)
+                    alloc_user = next((u for u in all_users if (u.get("name") or "").strip().lower() == alloc_name_clean), None)
                     if alloc_user and alloc_user.get("email"):
                         bg.add_task(send_completion_request_email, alloc_user["email"],
                                     existing.get("sn"), existing.get("text"), user_name or "Unknown", alloc_name)
 
             # Rule 2 – confirm completion
             elif new_status == "COMPLETED" and (old_status == "PENDING CONFIRM" or old_pending):
-                if user_name != existing.get("allocated_by") and not is_admin:
+                if not is_allocator and not is_admin:
                     raise HTTPException(status_code=403, detail="Only the allocator or Admin can confirm completion")
                 update_data["pending_confirmation"] = False
                 update_data["closed_by"] = user_name
@@ -513,7 +518,8 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                     from app.services.sheets_db_service import sheets_get_all
                     all_users = sheets_get_all("Users", use_cache=True)
                     for rn in resp_names:
-                        ru = next((u for u in all_users if u.get("name") == rn), None)
+                        rn_clean = rn.strip().lower()
+                        ru = next((u for u in all_users if (u.get("name") or "").strip().lower() == rn_clean), None)
                         if ru and ru.get("email"):
                             bg.add_task(send_completion_confirmed_email, ru["email"],
                                         existing.get("sn"), existing.get("text"), user_name or "Unknown")
@@ -529,10 +535,17 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                 update_data["status"] = "PENDING CONFIRM"
                 update_data["pending_confirmation"] = True
                 update_data["closed_on"] = None
+                if alloc_name:
+                    from app.services.sheets_db_service import sheets_get_all
+                    all_users = sheets_get_all("Users", use_cache=True)
+                    alloc_user = next((u for u in all_users if (u.get("name") or "").strip().lower() == alloc_name_clean), None)
+                    if alloc_user and alloc_user.get("email"):
+                        bg.add_task(send_completion_request_email, alloc_user["email"],
+                                    existing.get("sn"), existing.get("text"), user_name or "Unknown", alloc_name)
 
             # Rule 3 – reject completion
             elif new_status == "IN PROCESS" and (old_status == "PENDING CONFIRM" or old_pending):
-                if user_name != existing.get("allocated_by") and not is_admin:
+                if not is_allocator and not is_admin:
                     raise HTTPException(status_code=403, detail="Only the allocator or Admin can reject completion")
                 update_data["pending_confirmation"] = False
                 update_data["closed_on"] = None
@@ -541,7 +554,8 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                     from app.services.sheets_db_service import sheets_get_all
                     all_users = sheets_get_all("Users", use_cache=True)
                     for rn in resp_names:
-                        ru = next((u for u in all_users if u.get("name") == rn), None)
+                        rn_clean = rn.strip().lower()
+                        ru = next((u for u in all_users if (u.get("name") or "").strip().lower() == rn_clean), None)
                         if ru and ru.get("email"):
                             bg.add_task(send_completion_rejected_email, ru["email"],
                                         existing.get("sn"), existing.get("text"), user_name or "Unknown")
@@ -558,7 +572,7 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                 update_data["closed_on"] = None
 
         elif update_data.get("pending_confirmation") is False and old_pending:
-            if user_name != existing.get("allocated_by") and not is_admin:
+            if not is_allocator and not is_admin:
                 raise HTTPException(status_code=403, detail="Only the allocator or Admin can clear pending confirmation")
         # ── End Sheets status enforcement ────────────────────────────────────
 
@@ -630,6 +644,11 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
     old_status = action.status
     old_pending = action.pending_confirmation
     resp_names = _split_responsible(action.responsible or "")
+    resp_names_clean = [n.strip().lower() for n in resp_names]
+    alloc_name = (action.allocated_by or "").strip()
+    alloc_name_clean = alloc_name.lower()
+    is_allocator = bool(user_name_clean and user_name_clean == alloc_name_clean)
+    is_responsible = bool(user_name_clean and user_name_clean in resp_names_clean)
 
     # ── Step 1: Always keep pendingConfirmation in sync with status ──────────
     if new_status == "PENDING CONFIRM":
@@ -650,21 +669,21 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
     if new_status and new_status != old_status:
         # Rule 1 – request completion (→ PENDING CONFIRM)
         if new_status == "PENDING CONFIRM":
-            if user_name and user_name not in resp_names and not is_admin:
+            if user_name_clean and not is_responsible and not is_admin:
                 raise HTTPException(status_code=403, detail="Only the responsible user or Admin can request completion")
             update_data["pending_confirmation"] = True
             update_data["closed_on"] = None
             # Notify allocator
-            if action.allocated_by:
-                alloc_q = await db.execute(select(User).where(User.name == action.allocated_by))
+            if alloc_name:
+                alloc_q = await db.execute(select(User).where(User.name.ilike(alloc_name)))
                 allocator = alloc_q.scalar_one_or_none()
                 if allocator and allocator.email:
                     bg.add_task(send_completion_request_email, allocator.email,
-                                action.sn, action.text, user_name or "Unknown", action.allocated_by)
+                                action.sn, action.text, user_name or "Unknown", alloc_name)
 
         # Rule 2 – confirm completion (PENDING CONFIRM → COMPLETED)
         elif new_status == "COMPLETED" and (old_status == "PENDING CONFIRM" or old_pending):
-            if user_name != action.allocated_by and not is_admin:
+            if not is_allocator and not is_admin:
                 raise HTTPException(status_code=403, detail="Only the allocator or Admin can confirm completion")
             update_data["pending_confirmation"] = False
             update_data["closed_by"] = user_name
@@ -672,7 +691,8 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                 update_data["closed_on"] = _dt.date.today()
             # Notify all responsible persons
             if resp_names:
-                resp_q = await db.execute(select(User).where(User.name.in_(resp_names)))
+                from sqlalchemy import or_
+                resp_q = await db.execute(select(User).where(or_(*[User.name.ilike(rn) for rn in resp_names])))
                 for resp_user in resp_q.scalars().all():
                     if resp_user and resp_user.email:
                         bg.add_task(send_completion_confirmed_email, resp_user.email,
@@ -687,20 +707,26 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
 
         # Rule 3 – non-privileged user jumps directly to COMPLETED → force PENDING CONFIRM
         elif new_status == "COMPLETED":
-            raise HTTPException(
-                status_code=403,
-                detail="Actions must go through PENDING CONFIRM before completion, or be confirmed by the allocator/Admin"
-            )
+            update_data["status"] = "PENDING CONFIRM"
+            update_data["pending_confirmation"] = True
+            update_data["closed_on"] = None
+            if alloc_name:
+                alloc_q = await db.execute(select(User).where(User.name.ilike(alloc_name)))
+                allocator = alloc_q.scalar_one_or_none()
+                if allocator and allocator.email:
+                    bg.add_task(send_completion_request_email, allocator.email,
+                                action.sn, action.text, user_name or "Unknown", alloc_name)
 
         # Rule 3b – reject completion (PENDING CONFIRM → IN PROCESS)
         elif new_status == "IN PROCESS" and (old_status == "PENDING CONFIRM" or old_pending):
-            if user_name != action.allocated_by and not is_admin:
+            if not is_allocator and not is_admin:
                 raise HTTPException(status_code=403, detail="Only the allocator or Admin can reject completion")
             update_data["pending_confirmation"] = False
             update_data["closed_on"] = None
             # Notify all responsible persons
             if resp_names:
-                resp_q = await db.execute(select(User).where(User.name.in_(resp_names)))
+                from sqlalchemy import or_
+                resp_q = await db.execute(select(User).where(or_(*[User.name.ilike(rn) for rn in resp_names])))
                 for resp_user in resp_q.scalars().all():
                     if resp_user and resp_user.email:
                         bg.add_task(send_completion_rejected_email, resp_user.email,
@@ -713,7 +739,7 @@ async def update_action(action_id: str, data: ActionUpdate, bg: BackgroundTasks,
                 update_data.setdefault("closed_on", None)
 
     elif update_data.get("pending_confirmation") is False and old_pending:
-        if user_name != action.allocated_by and not is_admin:
+        if not is_allocator and not is_admin:
             raise HTTPException(status_code=403, detail="Only the allocator or Admin can clear pending confirmation")
     # ── End status enforcement ───────────────────────────────────────────────
 

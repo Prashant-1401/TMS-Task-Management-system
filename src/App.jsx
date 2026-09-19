@@ -1003,7 +1003,18 @@ table thead th{position:sticky;top:0;background:#fff;z-index:2;}
 }
 `;
 /* ===================== MICRO COMPONENTS ===================== */
-function SBadge({ s }) { const c = SC[s] || { bg: "#eee", text: "#333", dot: "#aaa" }; return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: c.bg, color: c.text, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />{s}</span>; }
+function SBadge({ s }) {
+  const statusStr = typeof s === "object" && s !== null
+    ? displayStatus(s)
+    : (s === "PENDING CONFIRM" ? "PENDING CONFIRM" : (s || "NOT STARTED"));
+  const c = SC[statusStr] || SC[normalizeStatus(statusStr)] || { bg: "#eee", text: "#333", dot: "#aaa" };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: c.bg, color: c.text, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />
+      {statusStr}
+    </span>
+  );
+}
 function PBadge({ p }) { const c = PC[p] || { bg: "#eee", text: "#333" }; return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: c.bg, color: c.text, fontSize: 11, fontWeight: 600 }}>{p}</span>; }
 function Avatar({ name, size = 30, users = [] }) { const u = getU(name, users); return <span title={name} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: "50%", background: u.color + "20", color: u.color, fontSize: size * .34, fontWeight: 700, flexShrink: 0, border: `1.5px solid ${u.color}30` }}>{u.initials}</span>; }
 function Lbl({ t, req }) { return <label style={{ fontSize: 11, color: T.text2, display: "block", marginBottom: 5, fontWeight: 600, letterSpacing: .3 }}>{t}{req && <span style={{ color: T.red, marginLeft: 2 }}>*</span>}</label>; }
@@ -1953,7 +1964,9 @@ function HomePage({ actions, setActions, user, setPage, users, meetings, plants,
       if (np.due && np.due !== a.due) { const rev = { date: todayStr(), from: a.due, to: np.due, by: user?.name || "Unknown" }; return { ...a, ...np, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] }; }
       return { ...a, ...np };
     }));
-    apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings)).catch(err => {
+    apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings)).then(saved => {
+      if (saved && saved.id) setActions && setActions(p => p.map(a => a.id === id ? { ...a, ...saved } : a));
+    }).catch(err => {
       console.error("Action update failed:", err);
       if (fetchData) fetchData();
     });
@@ -3956,7 +3969,9 @@ function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBa
             if (!setActions) return;
             const patch = normalizeActionPatch({ status });
             setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...patch } : a));
-            apiUpdate("actions", id, patch).catch(err => {
+            apiUpdate("actions", id, patch).then(saved => {
+              if (saved && saved.id) setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...saved } : a));
+            }).catch(err => {
               console.error("Action update failed:", err);
               if (fetchData) fetchData();
             });
@@ -3965,7 +3980,9 @@ function MeetingRoom({ mtg, plants, depts, users, onCommit, onCloseMeeting, onBa
             if (!setActions) return;
             const np = normalizeActionPatch(patch);
             setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...np } : a));
-            apiUpdate("actions", id, np).catch(err => {
+            apiUpdate("actions", id, np).then(saved => {
+              if (saved && saved.id) setActions(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...saved } : a));
+            }).catch(err => {
               console.error("Action update failed:", err);
               if (fetchData) fetchData();
             });
@@ -4869,16 +4886,18 @@ function ActionsPage({ actions, setActions, plants, depts, users, user, projects
   });
 
   const upAction = (id, patch) => {
+    const np = normalizeActionPatch(patch);
     setActions(p => p.map(a => {
       if (String(a.id) !== String(id)) return a;
-      const np = normalizeActionPatch(patch);
       if (np.due && np.due !== a.due) {
         const rev = { date: todayStr(), from: a.due, to: np.due, by: user?.name || "Unknown" };
         return { ...a, ...np, revisions: (a.revisions || 0) + 1, revisionHistory: [...(a.revisionHistory || []), rev] };
       }
       return { ...a, ...np };
     }));
-    apiUpdate("actions", id, resolveRecordIds(normalizeActionPatch(patch), plants, depts, machines, projects, meetings)).catch(err => {
+    apiUpdate("actions", id, resolveRecordIds(np, plants, depts, machines, projects, meetings)).then(saved => {
+      if (saved && saved.id) setActions(p => p.map(a => String(a.id) === String(id) ? { ...a, ...saved } : a));
+    }).catch(err => {
       console.error("Action update failed:", err);
       if (fetchData) fetchData();
     });
